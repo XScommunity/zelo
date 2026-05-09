@@ -240,6 +240,7 @@ function Zelo:CreateWindow(cfg)
     local Transparency = math.clamp(cfg.Transparency or 0.05, 0, 0.9)
     local BlurEnabled = cfg.Blur ~= false
 
+    local SaveFileName   = cfg.SaveFileName   or ("Zelo_Key_" .. game.PlaceId)
     local KeyTitle       = cfg.KeyTitle       or "Key System"
     local KeySubTitle    = cfg.KeySubTitle    or nil
     local KeyGetText     = cfg.KeyGetText     or "Get Key"
@@ -2007,7 +2008,7 @@ function Zelo:CreateWindow(cfg)
         if SaveKey then
             pcall(function()
                 if writefile and readfile then
-                    local keyFile = "Zelo_Key_" .. game.PlaceId .. ".txt"
+                    local keyFile = SaveFileName .. ".txt"
                     if isfile(keyFile) then
                         savedKey = readfile(keyFile)
                     end
@@ -2037,7 +2038,7 @@ function Zelo:CreateWindow(cfg)
                 if SaveKey then
                     pcall(function()
                         if writefile then
-                            local keyFile = "Zelo_Key_" .. game.PlaceId .. ".txt"
+                            local keyFile = SaveFileName .. ".txt"
                             writefile(keyFile, ValidKey)
                         end
                     end)
