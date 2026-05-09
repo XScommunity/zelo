@@ -1,11 +1,15 @@
 --[[
-    Zelo Library v2.2.0
+    Zelo Library v2.3.0
     UI Library para Roblox
-    
-    FIXES v2.2.0:
-    - Dropdown/ColorPicker agora ficam no topo (ZIndex correto)
-    - Buscar tabs some ao minimizar
-    - Key System totalmente configurável (titulo, subtitulo, etc)
+
+    FIXES/NOVIDADES v2.3.0:
+    - Blur NÃO muda ao minimizar/expandir (só muda ao fechar/unload)
+    - Suporte a mobile (Touch + Mouse)
+    - Settings agora é um painel lateral (como aba), acessado pelo botão do nome
+    - Toggle "No Name" nas settings (esconde nome do jogador no header)
+    - Bug corrigido: fechar com X e reabrir com ToggleKey funciona corretamente
+    - Botão Unload nas settings
+    - Settings é padrão em todos os scripts da library
 ]]
 
 local Players = game:GetService("Players")
@@ -39,6 +43,9 @@ local C = {
     NotifyInfo = Color3.fromRGB(33, 150, 243),
     NotifyWarning = Color3.fromRGB(255, 152, 0),
 }
+
+-- Detecta se é mobile
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 local function make(class, props, parent)
     local o = Instance.new(class)
@@ -88,6 +95,21 @@ end
 
 local function tween(obj, t, props)
     TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+end
+
+-- Helper: conecta tanto mouse quanto touch num frame/button
+local function onActivated(obj, fn)
+    if obj:IsA("GuiButton") then
+        obj.MouseButton1Click:Connect(fn)
+        obj.TouchTap:Connect(fn)
+    else
+        obj.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+                fn(inp)
+            end
+        end)
+    end
 end
 
 -- NOTIFICATION
@@ -218,27 +240,41 @@ function Zelo:CreateWindow(cfg)
     local Transparency = math.clamp(cfg.Transparency or 0.05, 0, 0.9)
     local BlurEnabled = cfg.Blur ~= false
 
-    -- FIX: Key System configurável
-    local KeyTitle    = cfg.KeyTitle    or "Key System"
-    local KeySubTitle = cfg.KeySubTitle or nil  -- se nil, não aparece
-    local KeyGetText  = cfg.KeyGetText  or "Get Key"
+    local KeyTitle       = cfg.KeyTitle       or "Key System"
+    local KeySubTitle    = cfg.KeySubTitle    or nil
+    local KeyGetText     = cfg.KeyGetText     or "Get Key"
     local KeyConfirmText = cfg.KeyConfirmText or "Confirmar"
     local KeyCloseText   = cfg.KeyCloseText   or "Fechar"
 
-    local WIN_VISIBLE = true
+    local WIN_VISIBLE = false   -- começa false, só fica true após KeySystem/Discord/direto
     local WIN_ALPHA = Transparency
     local TABS = {}
     local ACTIVE_TAB = nil
+    local SETTINGS_ACTIVE = false
     local BLUR_OBJ = nil
     local MAIN_GUI = nil
     local WIN = nil
     local WindowObj = nil
 
+    -- Blur só ativado enquanto janela aberta E não minimizada
     if BlurEnabled then
         BLUR_OBJ = Instance.new("BlurEffect")
         BLUR_OBJ.Size = 0
+        BLUR_OBJ.Enabled = false
         BLUR_OBJ.Parent = Lighting
-        tween(BLUR_OBJ, 0.5, {Size = 20})
+    end
+
+    local function setBlur(on)
+        if not BlurEnabled or not BLUR_OBJ then return end
+        if on then
+            BLUR_OBJ.Enabled = true
+            tween(BLUR_OBJ, 0.5, {Size = 20})
+        else
+            tween(BLUR_OBJ, 0.3, {Size = 0})
+            task.delay(0.3, function()
+                if BLUR_OBJ then BLUR_OBJ.Enabled = false end
+            end)
+        end
     end
 
     MAIN_GUI = make("ScreenGui", {
@@ -248,10 +284,18 @@ function Zelo:CreateWindow(cfg)
     }, CoreGui)
     pcall(function() MAIN_GUI.Parent = LP:WaitForChild("PlayerGui") end)
 
+    -- Mobile: tamanho adaptado
+    local WIN_W = IS_MOBILE and 580 or 720
+    local WIN_H = IS_MOBILE and 420 or 500
+    local WIN_X = IS_MOBILE and -WIN_W/2 or -360
+    local WIN_Y = IS_MOBILE and -WIN_H/2 or 60
+    local WIN_XSCALE = 0.5
+    local WIN_YSCALE = IS_MOBILE and 0.5 or 0
+
     WIN = make("Frame", {
         Name = "Window",
-        Size = UDim2.new(0, 720, 0, 500),
-        Position = UDim2.new(0.5, -360, 0, 60),
+        Size = UDim2.new(0, WIN_W, 0, WIN_H),
+        Position = UDim2.new(WIN_XSCALE, WIN_X, WIN_YSCALE, WIN_Y),
         BackgroundColor3 = C.BG,
         BackgroundTransparency = WIN_ALPHA,
         Active = true,
@@ -288,7 +332,7 @@ function Zelo:CreateWindow(cfg)
     }, Header)
 
     local LogoF = make("Frame", {
-        Size = UDim2.new(0, 120, 1, 0),
+        Size = UDim2.new(0, 140, 1, 0),
         BackgroundTransparency = 1,
     }, Header)
 
@@ -314,13 +358,14 @@ function Zelo:CreateWindow(cfg)
         TextXAlignment = Enum.TextXAlignment.Left,
     }, LogoF)
 
+    -- Botão do usuário (abre Settings)
     local UserBtn = make("TextButton", {
         Name = "UserBtn",
         Size = UDim2.new(0, 120, 0, 28),
         Position = UDim2.new(1, -204, 0.5, -14),
         BackgroundTransparency = 1,
         BackgroundColor3 = C.Surface2,
-        Text = NAME .. "  v",
+        Text = NAME .. "  ⚙",
         TextColor3 = C.Dim,
         Font = Enum.Font.GothamBold,
         TextSize = 10,
@@ -367,28 +412,30 @@ function Zelo:CreateWindow(cfg)
     CloseBtn.MouseLeave:Connect(function()
         tween(CloseBtn, 0.15, {BackgroundColor3 = C.Surface2, TextColor3 = C.Dim})
     end)
-    CloseBtn.MouseButton1Click:Connect(function()
-        tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 0)})
-        task.delay(0.2, function()
-            WIN.Visible = false
-            WIN_VISIBLE = false
-            if BLUR_OBJ then BLUR_OBJ.Enabled = false end
-        end)
-    end)
 
+    -- Drag (mouse + touch)
     local dragging = false
     local dragStart, startPos
 
+    local function beginDrag(inputPos)
+        dragging = true
+        dragStart = inputPos
+        startPos = WIN.Position
+    end
+    local function endDrag()
+        dragging = false
+    end
+
     Header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = WIN.Position
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            beginDrag(input.Position)
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             WIN.Position = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -398,8 +445,9 @@ function Zelo:CreateWindow(cfg)
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            endDrag()
         end
     end)
 
@@ -408,6 +456,7 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, 0, 1, -46),
         Position = UDim2.new(0, 0, 0, 46),
         BackgroundTransparency = 1,
+        ClipsDescendants = false,
     }, WIN)
 
     local Sidebar = make("Frame", {
@@ -458,48 +507,449 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, -160, 1, 0),
         Position = UDim2.new(0, 160, 0, 0),
         BackgroundTransparency = 1,
-        -- FIX: removido ClipsDescendants = true para dropdowns não ficarem cortados
         ClipsDescendants = false,
     }, Body)
 
-    -- FIX: minimizar esconde TabSearch e body inteiro corretamente
-    local bodyMinimized = false
-    MinBtn.MouseButton1Click:Connect(function()
-        bodyMinimized = not bodyMinimized
-        if not bodyMinimized then
-            -- expandir
-            WIN.Visible = true
-            Body.Visible = true
-            tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 500)})
-            if BLUR_OBJ then BLUR_OBJ.Enabled = true end
-        else
-            -- minimizar: esconde body (inclui sidebar e TabSearch)
-            tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 46)})
-            task.delay(0.2, function()
-                Body.Visible = false
-            end)
-            if BLUR_OBJ then BLUR_OBJ.Enabled = false end
+    -- ==============================================================
+    -- SETTINGS PANEL (lateral, mesmo estilo de aba)
+    -- ==============================================================
+    local SettingsFrame = make("Frame", {
+        Name = "SettingsFrame",
+        Size = UDim2.new(1, -160, 1, 0),
+        Position = UDim2.new(0, 160, 0, 0),
+        BackgroundTransparency = 1,
+        ClipsDescendants = false,
+        Visible = false,
+    }, Body)
+
+    local SettingsScroll = make("ScrollingFrame", {
+        Size = UDim2.new(1, -28, 1, -10),
+        Position = UDim2.new(0, 14, 0, 10),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = C.Border,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ElasticBehavior = Enum.ElasticBehavior.Never,
+    }, SettingsFrame)
+    listLayout(Enum.FillDirection.Vertical, 10, SettingsScroll)
+
+    local function makeSettingsSection(title)
+        local gb = make("Frame", {
+            Name = "SettingsGroup",
+            Size = UDim2.new(1, 0, 0, 0),
+            BackgroundColor3 = C.Surface,
+            AutomaticSize = Enum.AutomaticSize.Y,
+        }, SettingsScroll)
+        corner(8, gb)
+        stroke(C.Border, 1, gb)
+
+        local inner = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 0),
+            BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.Y,
+        }, gb)
+        pad(10, 10, 12, 12, inner)
+        listLayout(Enum.FillDirection.Vertical, 6, inner)
+
+        if title and title ~= "" then
+            local hdr = make("Frame", {
+                Size = UDim2.new(1, 0, 0, 22),
+                BackgroundTransparency = 1,
+                LayoutOrder = 0,
+            }, inner)
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 1, 0),
+                BackgroundTransparency = 1,
+                Text = title:upper(),
+                TextColor3 = C.Muted,
+                Font = Enum.Font.GothamBold,
+                TextSize = 8,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, hdr)
+            make("Frame", {
+                Size = UDim2.new(1, 0, 0, 1),
+                Position = UDim2.new(0, 0, 1, -1),
+                BackgroundColor3 = C.Border,
+            }, hdr)
         end
-        WIN_VISIBLE = not bodyMinimized
+
+        return inner
+    end
+
+    -- Section: HUB
+    local secHub = makeSettingsSection("Hub")
+    local loCount = 1
+
+    -- Toggle "No Name"
+    local noNameVal = false
+    local noNameRow = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 32),
+        BackgroundColor3 = C.Surface2,
+        LayoutOrder = loCount,
+    }, secHub)
+    loCount += 1
+    corner(6, noNameRow)
+    stroke(C.Border, 1, noNameRow)
+
+    make("TextLabel", {
+        Size = UDim2.new(1, -54, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "No Name",
+        TextColor3 = C.Text,
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, noNameRow)
+
+    local noNamePill = make("Frame", {
+        Size = UDim2.new(0, 36, 0, 18),
+        Position = UDim2.new(1, -46, 0.5, -9),
+        BackgroundColor3 = C.Surface3,
+    }, noNameRow)
+    corner(9, noNamePill)
+    stroke(C.Border, 1, noNamePill)
+
+    local noNameKnob = make("Frame", {
+        Size = UDim2.new(0, 12, 0, 12),
+        Position = UDim2.new(0, 3, 0.5, -6),
+        BackgroundColor3 = C.White,
+    }, noNamePill)
+    corner(6, noNameKnob)
+
+    local function setNoName(v)
+        noNameVal = v
+        tween(noNamePill, 0.15, {BackgroundColor3 = v and C.Green or C.Surface3})
+        tween(noNameKnob, 0.15, {
+            Position = v and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+        })
+        UserBtn.Text = v and "⚙" or (NAME .. "  ⚙")
+    end
+
+    onActivated(noNameRow, function()
+        setNoName(not noNameVal)
     end)
 
+    -- Keybind para esconder
+    local kbRow = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 32),
+        BackgroundTransparency = 1,
+        LayoutOrder = loCount,
+    }, secHub)
+    loCount += 1
+
+    local kbBg = make("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = C.Surface2,
+    }, kbRow)
+    corner(6, kbBg)
+    stroke(C.Border, 1, kbBg)
+
+    make("TextLabel", {
+        Size = UDim2.new(1, -100, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Keybind (esconder)",
+        TextColor3 = C.Text,
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, kbBg)
+
+    local kbBox = make("TextButton", {
+        Size = UDim2.new(0, 80, 0, 22),
+        Position = UDim2.new(1, -90, 0.5, -11),
+        BackgroundColor3 = C.Surface3,
+        Text = "[" .. tostring(ToggleKey):gsub("Enum.KeyCode.", "") .. "]",
+        TextColor3 = C.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 9,
+        AutoButtonColor = false,
+    }, kbBg)
+    corner(5, kbBox)
+    stroke(C.Border, 1, kbBox)
+
+    local listeningKB = false
+    onActivated(kbBox, function()
+        listeningKB = true
+        kbBox.Text = "[ ... ]"
+        kbBox.TextColor3 = C.Muted
+    end)
     UserInputService.InputBegan:Connect(function(inp, gp)
         if gp then return end
-        if inp.KeyCode == ToggleKey then
-            bodyMinimized = not bodyMinimized
-            if not bodyMinimized then
+        if listeningKB and inp.UserInputType == Enum.UserInputType.Keyboard then
+            ToggleKey = inp.KeyCode
+            kbBox.Text = "[" .. tostring(inp.KeyCode):gsub("Enum.KeyCode.", "") .. "]"
+            kbBox.TextColor3 = C.Text
+            listeningKB = false
+        end
+    end)
+
+    -- Transparência
+    local alphaSection = makeSettingsSection("Transparencia")
+    local alphaRow = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundTransparency = 1,
+        LayoutOrder = 1,
+    }, alphaSection)
+
+    local sliderBG = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 6),
+        Position = UDim2.new(0, 0, 0, 16),
+        BackgroundColor3 = C.Surface3,
+    }, alphaRow)
+    corner(3, sliderBG)
+    stroke(C.Border2, 1, sliderBG)
+
+    local sliderFill = make("Frame", {
+        Size = UDim2.new(WIN_ALPHA, 0, 1, 0),
+        BackgroundColor3 = C.White,
+    }, sliderBG)
+    corner(3, sliderFill)
+
+    local alphaLbl = make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 14),
+        BackgroundTransparency = 1,
+        Text = math.floor(WIN_ALPHA * 100) .. "%",
+        TextColor3 = C.Dim,
+        Font = Enum.Font.Gotham,
+        TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, alphaRow)
+
+    local draggingAlpha = false
+    sliderBG.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            draggingAlpha = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            draggingAlpha = false
+        end
+    end)
+    RunService.RenderStepped:Connect(function()
+        if draggingAlpha then
+            local mx = UserInputService:GetMouseLocation().X
+            local rel = math.clamp(
+                (mx - sliderBG.AbsolutePosition.X) / sliderBG.AbsoluteSize.X, 0, 1)
+            WIN_ALPHA = rel
+            sliderFill.Size = UDim2.new(rel, 0, 1, 0)
+            alphaLbl.Text = math.floor(rel * 100) .. "%"
+            WIN.BackgroundTransparency = rel
+            Header.BackgroundTransparency = rel
+            Sidebar.BackgroundTransparency = rel
+            if TABS then
+                for _, tab in pairs(TABS) do
+                    for _, child in pairs(tab.LeftContainer:GetChildren()) do
+                        if child:IsA("Frame") and child.Name == "Groupbox" then
+                            child.BackgroundTransparency = rel
+                        end
+                    end
+                    for _, child in pairs(tab.RightContainer:GetChildren()) do
+                        if child:IsA("Frame") and child.Name == "Groupbox" then
+                            child.BackgroundTransparency = rel
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- Blur (apenas se habilitado)
+    if BlurEnabled then
+        local blurSection = makeSettingsSection("Blur do Fundo")
+        local blurRow = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 32),
+            BackgroundTransparency = 1,
+            LayoutOrder = 1,
+        }, blurSection)
+
+        local blurBg = make("Frame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = C.Surface2,
+        }, blurRow)
+        corner(6, blurBg)
+        stroke(C.Border, 1, blurBg)
+
+        make("TextLabel", {
+            Size = UDim2.new(1, -54, 1, 0),
+            Position = UDim2.new(0, 10, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "Blur ativo",
+            TextColor3 = C.Text,
+            Font = Enum.Font.Gotham,
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, blurBg)
+
+        local blurOn = true
+        local blurPill = make("Frame", {
+            Size = UDim2.new(0, 36, 0, 18),
+            Position = UDim2.new(1, -46, 0.5, -9),
+            BackgroundColor3 = C.Green,
+        }, blurBg)
+        corner(9, blurPill)
+        stroke(C.Border, 1, blurPill)
+
+        local blurKnob = make("Frame", {
+            Size = UDim2.new(0, 12, 0, 12),
+            Position = UDim2.new(1, -15, 0.5, -6),
+            BackgroundColor3 = C.White,
+        }, blurPill)
+        corner(6, blurKnob)
+
+        onActivated(blurBg, function()
+            blurOn = not blurOn
+            tween(blurPill, 0.15, {BackgroundColor3 = blurOn and C.Green or C.Surface3})
+            tween(blurKnob, 0.15, {
+                Position = blurOn and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+            })
+            if BLUR_OBJ then
+                if blurOn and WIN_VISIBLE then
+                    BLUR_OBJ.Enabled = true
+                    tween(BLUR_OBJ, 0.4, {Size = 20})
+                else
+                    tween(BLUR_OBJ, 0.3, {Size = 0})
+                    task.delay(0.3, function() if BLUR_OBJ then BLUR_OBJ.Enabled = false end end)
+                end
+            end
+        end)
+    end
+
+    -- Discord nas settings (se tiver)
+    if Discord then
+        local dcSection = makeSettingsSection("Discord")
+        local dcRow = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 32),
+            BackgroundTransparency = 1,
+            LayoutOrder = 1,
+        }, dcSection)
+
+        local dcBtn = make("TextButton", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = C.Blue,
+            Text = "Copiar invite",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            Font = Enum.Font.GothamBold,
+            TextSize = 10,
+            AutoButtonColor = false,
+        }, dcRow)
+        corner(6, dcBtn)
+
+        onActivated(dcBtn, function()
+            pcall(function() setclipboard(Discord) end)
+            dcBtn.Text = "Copiado!"
+            task.delay(1.5, function() dcBtn.Text = "Copiar invite" end)
+        end)
+    end
+
+    -- Unload
+    local unloadSection = makeSettingsSection("Unload")
+    local unloadRow = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 32),
+        BackgroundTransparency = 1,
+        LayoutOrder = 1,
+    }, unloadSection)
+
+    local unloadBtn = make("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = C.Red,
+        Text = "Descarregar Script",
+        TextColor3 = C.White,
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        AutoButtonColor = false,
+    }, unloadRow)
+    corner(6, unloadBtn)
+
+    onActivated(unloadBtn, function()
+        tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, 0)})
+        task.delay(0.25, function()
+            if BLUR_OBJ then BLUR_OBJ:Destroy() end
+            MAIN_GUI:Destroy()
+        end)
+    end)
+
+    -- ==============================================================
+    -- MINIMIZE / TOGGLE / CLOSE
+    -- ==============================================================
+    local bodyMinimized = false
+
+    local function showWindow()
+        WIN.Visible = true
+        Body.Visible = true
+        WIN_VISIBLE = true
+        bodyMinimized = false
+        tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, WIN_H)})
+        -- Blur NÃO é ativado ao expandir — mantém estado atual
+    end
+
+    local function hideWindow()
+        bodyMinimized = true
+        WIN_VISIBLE = false
+        tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, 46)})
+        task.delay(0.2, function()
+            Body.Visible = false
+        end)
+        -- Blur NÃO é desativado ao minimizar
+    end
+
+    MinBtn.MouseButton1Click:Connect(function()
+        if bodyMinimized then
+            showWindow()
+        else
+            hideWindow()
+        end
+    end)
+    MinBtn.TouchTap:Connect(function()
+        if bodyMinimized then
+            showWindow()
+        else
+            hideWindow()
+        end
+    end)
+
+    -- Fechar: esconde a janela, reseta estado para poder reabrir com ToggleKey
+    CloseBtn.MouseButton1Click:Connect(function()
+        tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, 0)})
+        task.delay(0.2, function()
+            WIN.Visible = false
+            Body.Visible = true  -- reset para quando reabrir
+            WIN_VISIBLE = false
+            bodyMinimized = false  -- FIX: reseta estado para ToggleKey funcionar
+        end)
+    end)
+    CloseBtn.TouchTap:Connect(function()
+        tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, 0)})
+        task.delay(0.2, function()
+            WIN.Visible = false
+            Body.Visible = true
+            WIN_VISIBLE = false
+            bodyMinimized = false
+        end)
+    end)
+
+    -- ToggleKey: abre se fechado, minimiza/expande se visível
+    UserInputService.InputBegan:Connect(function(inp, gp)
+        if gp then return end
+        if inp.KeyCode == ToggleKey and not listeningKB then
+            if not WIN.Visible then
+                -- estava fechado (X foi pressionado), reabre
+                WIN.Size = UDim2.new(0, WIN_W, 0, 0)
                 WIN.Visible = true
                 Body.Visible = true
-                tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 500)})
-                if BLUR_OBJ then BLUR_OBJ.Enabled = true end
+                WIN_VISIBLE = true
+                bodyMinimized = false
+                tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, WIN_H)})
+            elseif bodyMinimized then
+                showWindow()
             else
-                tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 46)})
-                task.delay(0.2, function()
-                    Body.Visible = false
-                end)
-                if BLUR_OBJ then BLUR_OBJ.Enabled = false end
+                hideWindow()
             end
-            WIN_VISIBLE = not bodyMinimized
         end
     end)
 
@@ -512,247 +962,68 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- HUB SETTINGS
-    local HubPanel = make("Frame", {
-        Name = "HubSettings",
-        Size = UDim2.new(0, 220, 0, 0),
-        Position = UDim2.new(1, -232, 0, 50),
-        BackgroundColor3 = C.Surface,
-        ClipsDescendants = true,
-        ZIndex = 50,
-        Visible = false,
-    }, WIN)
-    corner(8, HubPanel)
-    stroke(C.Border, 1, HubPanel)
-
-    local HubInner = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 0),
-        BackgroundTransparency = 1,
-        AutomaticSize = Enum.AutomaticSize.Y,
-        ZIndex = 51,
-    }, HubPanel)
-    HubInner.AutomaticSize = Enum.AutomaticSize.Y
-    listLayout(Enum.FillDirection.Vertical, 0, HubInner)
-    pad(8, 8, 0, 0, HubInner)
-
-    local function hubLabel(text)
-        local lbl = make("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 11),
-            BackgroundTransparency = 1,
-            Text = text,
-            TextColor3 = C.Muted,
-            Font = Enum.Font.GothamBold,
-            TextSize = 8,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 51,
-        }, HubInner)
-        pad(0, 0, 12, 12, lbl)
-        return lbl
+    -- ==============================================================
+    -- SETTINGS TAB TOGGLE (botão do nome)
+    -- ==============================================================
+    local function openSettings()
+        SETTINGS_ACTIVE = true
+        -- Esconde tab atual
+        if ACTIVE_TAB then
+            ACTIVE_TAB.Frame.Visible = false
+            ACTIVE_TAB.SectionSearch.Visible = false
+            ACTIVE_TAB.Btn.BackgroundColor3 = C.Surface2
+            ACTIVE_TAB.Btn.TextColor3 = C.Dim
+        end
+        SettingsFrame.Visible = true
+        UserBtn.BackgroundColor3 = C.TabBG
+        UserBtn.TextColor3 = C.Black
+        UserBtn.BackgroundTransparency = 0
     end
 
-    local hubOpen = false
-    local function toggleHub()
-        hubOpen = not hubOpen
-        HubPanel.Visible = true
-        local targetH = hubOpen and HubInner.AbsoluteSize.Y or 0
-        tween(HubPanel, 0.2, {Size = UDim2.new(0, 220, 0, targetH)})
-
-        if hubOpen then
-            UserBtn.BackgroundColor3 = C.TabBG
-            UserBtn.TextColor3 = C.Black
-            UserBtn.BackgroundTransparency = 0
-        else
-            UserBtn.BackgroundColor3 = C.Surface2
-            UserBtn.TextColor3 = C.Dim
-            UserBtn.BackgroundTransparency = 1
-            task.delay(0.21, function()
-                HubPanel.Visible = false
-            end)
+    local function closeSettings()
+        SETTINGS_ACTIVE = false
+        SettingsFrame.Visible = false
+        UserBtn.BackgroundColor3 = C.Surface2
+        UserBtn.TextColor3 = C.Dim
+        UserBtn.BackgroundTransparency = 1
+        -- Restaura tab ativa
+        if ACTIVE_TAB then
+            ACTIVE_TAB.Frame.Visible = true
+            ACTIVE_TAB.SectionSearch.Visible = true
+            ACTIVE_TAB.Btn.BackgroundColor3 = C.TabBG
+            ACTIVE_TAB.Btn.TextColor3 = C.Black
         end
     end
 
     UserBtn.MouseEnter:Connect(function()
-        if not hubOpen then
+        if not SETTINGS_ACTIVE then
             UserBtn.BackgroundTransparency = 0
             UserBtn.TextColor3 = C.Text
         end
     end)
     UserBtn.MouseLeave:Connect(function()
-        if not hubOpen then
+        if not SETTINGS_ACTIVE then
             UserBtn.BackgroundTransparency = 1
             UserBtn.TextColor3 = C.Dim
         end
     end)
-    UserBtn.MouseButton1Click:Connect(toggleHub)
-
-    hubLabel("KEYBIND PARA ESCONDER")
-    local kbRow = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundTransparency = 1,
-        ZIndex = 51,
-    }, HubInner)
-    pad(0, 4, 12, 12, kbRow)
-
-    local kbBox = make("TextButton", {
-        Size = UDim2.new(1, 0, 0, 28),
-        BackgroundColor3 = C.Surface2,
-        Text = "[" .. tostring(ToggleKey):gsub("Enum.KeyCode.", "") .. "]",
-        TextColor3 = C.Text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 10,
-        AutoButtonColor = false,
-        ZIndex = 52,
-    }, kbRow)
-    corner(6, kbBox)
-    stroke(C.Border, 1, kbBox)
-
-    local listeningKB = false
-    kbBox.MouseButton1Click:Connect(function()
-        listeningKB = true
-        kbBox.Text = "[ Pressione uma tecla... ]"
-        kbBox.TextColor3 = C.Dim
-    end)
-    UserInputService.InputBegan:Connect(function(inp, gp)
-        if gp then return end
-        if listeningKB and inp.UserInputType == Enum.UserInputType.Keyboard then
-            ToggleKey = inp.KeyCode
-            kbBox.Text = "[" .. tostring(inp.KeyCode):gsub("Enum.KeyCode.", "") .. "]"
-            kbBox.TextColor3 = C.Text
-            listeningKB = false
+    onActivated(UserBtn, function()
+        if SETTINGS_ACTIVE then
+            closeSettings()
+        else
+            openSettings()
         end
     end)
 
-    hubLabel("TRANSPARENCIA")
-    local alphaRow = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundTransparency = 1,
-        ZIndex = 51,
-    }, HubInner)
-    pad(0, 6, 12, 12, alphaRow)
-
-    local sliderBG = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 6),
-        Position = UDim2.new(0, 0, 0, 16),
-        BackgroundColor3 = C.Surface3,
-        ZIndex = 52,
-    }, alphaRow)
-    corner(3, sliderBG)
-    stroke(C.Border2, 1, sliderBG)
-
-    local sliderFill = make("Frame", {
-        Size = UDim2.new(WIN_ALPHA, 0, 1, 0),
-        BackgroundColor3 = C.White,
-        ZIndex = 53,
-    }, sliderBG)
-    corner(3, sliderFill)
-
-    local alphaLbl = make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 14),
-        BackgroundTransparency = 1,
-        Text = math.floor(WIN_ALPHA * 100) .. "%",
-        TextColor3 = C.Dim,
-        Font = Enum.Font.Gotham,
-        TextSize = 9,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        ZIndex = 52,
-    }, alphaRow)
-
-    local draggingAlpha = false
-    sliderBG.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            draggingAlpha = true
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            draggingAlpha = false
-        end
-    end)
-    RunService.RenderStepped:Connect(function()
-        if draggingAlpha then
-            local rel = math.clamp(
-                (UserInputService:GetMouseLocation().X - sliderBG.AbsolutePosition.X)
-                / sliderBG.AbsoluteSize.X, 0, 1)
-            WIN_ALPHA = rel
-            sliderFill.Size = UDim2.new(rel, 0, 1, 0)
-            alphaLbl.Text = math.floor(rel * 100) .. "%"
-            WIN.BackgroundTransparency = rel
-            Header.BackgroundTransparency = rel
-            Sidebar.BackgroundTransparency = rel
-            for _, tab in pairs(TABS) do
-                for _, child in pairs(tab.LeftContainer:GetChildren()) do
-                    if child:IsA("Frame") and child.Name == "Groupbox" then
-                        child.BackgroundTransparency = rel
-                    end
-                end
-                for _, child in pairs(tab.RightContainer:GetChildren()) do
-                    if child:IsA("Frame") and child.Name == "Groupbox" then
-                        child.BackgroundTransparency = rel
-                    end
-                end
-            end
-        end
-    end)
-
-    if BlurEnabled then
-        hubLabel("BLUR DO FUNDO")
-        local blurRow = make("Frame", {
-            Size = UDim2.new(1, 0, 0, 32),
-            BackgroundTransparency = 1,
-            ZIndex = 51,
-        }, HubInner)
-        pad(0, 4, 12, 12, blurRow)
-
-        local blurToggle = make("TextButton", {
-            Size = UDim2.new(1, 0, 0, 28),
-            BackgroundColor3 = C.Surface2,
-            Text = "Blur: Ativado",
-            TextColor3 = C.Text,
-            Font = Enum.Font.GothamBold,
-            TextSize = 10,
-            AutoButtonColor = false,
-            ZIndex = 52,
-        }, blurRow)
-        corner(6, blurToggle)
-        stroke(C.Border, 1, blurToggle)
-
-        local blurOn = true
-        blurToggle.MouseButton1Click:Connect(function()
-            blurOn = not blurOn
-            blurToggle.Text = blurOn and "Blur: Ativado" or "Blur: Desativado"
-            blurToggle.TextColor3 = blurOn and C.Text or C.Dim
-            if BLUR_OBJ then
-                BLUR_OBJ.Enabled = blurOn
-            end
-        end)
-    end
-
-    if Discord then
-        hubLabel("DISCORD")
-        local dcBtn = make("TextButton", {
-            Size = UDim2.new(1, 0, 0, 28),
-            BackgroundColor3 = C.Blue,
-            Text = "Copiar invite",
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            Font = Enum.Font.GothamBold,
-            TextSize = 10,
-            AutoButtonColor = false,
-            ZIndex = 52,
-        }, HubInner)
-        corner(6, dcBtn)
-        pad(0, 8, 12, 12, dcBtn)
-
-        dcBtn.MouseButton1Click:Connect(function()
-            pcall(function() setclipboard(Discord) end)
-            dcBtn.Text = "Copiado!"
-            task.delay(1.5, function() dcBtn.Text = "Copiar invite" end)
-        end)
-    end
-
+    -- ==============================================================
     -- WINDOW OBJECT
+    -- ==============================================================
     WindowObj = {}
 
     local function selectTab(tabObj)
+        if SETTINGS_ACTIVE then
+            closeSettings()
+        end
         if ACTIVE_TAB then
             ACTIVE_TAB.Btn.BackgroundColor3 = C.Surface2
             ACTIVE_TAB.Btn.TextColor3 = C.Dim
@@ -787,7 +1058,6 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             Visible = false,
-            -- FIX: ClipsDescendants false para dropdown sobrepor corretamente
             ClipsDescendants = false,
         }, ContentArea)
 
@@ -814,7 +1084,6 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(0.5, -10, 1, -48),
             Position = UDim2.new(0, 14, 0, 44),
             BackgroundTransparency = 1,
-            -- FIX: sem ClipsDescendants para dropdown não cortar
             ClipsDescendants = false,
         }, tabFrame)
         listLayout(Enum.FillDirection.Vertical, 10, leftContainer)
@@ -865,7 +1134,7 @@ function Zelo:CreateWindow(cfg)
                 tabBtn.TextColor3 = C.Dim
             end
         end)
-        tabBtn.MouseButton1Click:Connect(function()
+        onActivated(tabBtn, function()
             selectTab(tabObj)
         end)
 
@@ -882,7 +1151,6 @@ function Zelo:CreateWindow(cfg)
                 BackgroundColor3 = C.Surface,
                 BackgroundTransparency = WIN_ALPHA,
                 AutomaticSize = Enum.AutomaticSize.Y,
-                -- FIX: sem ClipsDescendants para dropdown sobrepor
                 ClipsDescendants = false,
             }, container)
             gbFrame:SetAttribute("Title", sTitle or "")
@@ -950,7 +1218,6 @@ function Zelo:CreateWindow(cfg)
                     Size = UDim2.new(1, 0, 0, h or 32),
                     BackgroundTransparency = 1,
                     LayoutOrder = nextOrder(),
-                    -- FIX: sem ClipsDescendants
                     ClipsDescendants = false,
                 }, secInner)
             end
@@ -976,7 +1243,7 @@ function Zelo:CreateWindow(cfg)
                 b.MouseLeave:Connect(function()
                     tween(b, 0.12, {BackgroundColor3 = C.Surface2})
                 end)
-                b.MouseButton1Click:Connect(function()
+                onActivated(b, function()
                     tween(b, 0.06, {BackgroundColor3 = C.Border})
                     task.delay(0.1, function()
                         tween(b, 0.1, {BackgroundColor3 = C.Surface2})
@@ -1032,10 +1299,8 @@ function Zelo:CreateWindow(cfg)
                     if opts.Callback then opts.Callback(v) end
                 end
 
-                bg.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                        setToggle(not val)
-                    end
+                onActivated(bg, function()
+                    setToggle(not val)
                 end)
 
                 local ctrl = {}
@@ -1080,7 +1345,7 @@ function Zelo:CreateWindow(cfg)
                 corner(5, keyBtn)
                 stroke(C.Border, 1, keyBtn)
 
-                keyBtn.MouseButton1Click:Connect(function()
+                onActivated(keyBtn, function()
                     listening = true
                     keyBtn.Text = "[ ... ]"
                     keyBtn.TextColor3 = C.Muted
@@ -1139,7 +1404,7 @@ function Zelo:CreateWindow(cfg)
                 stroke(C.Border, 1, box)
                 pad(0, 0, 8, 8, box)
 
-                box.FocusLost:Connect(function(enter)
+                box.FocusLost:Connect(function()
                     if opts.Callback then opts.Callback(box.Text) end
                 end)
 
@@ -1205,8 +1470,6 @@ function Zelo:CreateWindow(cfg)
                 local options = opts.Options or {}
                 local selected = opts.Default or (options[1] or "")
                 local row = makeRow(34)
-
-                -- FIX: row não clipa
                 row.ClipsDescendants = false
 
                 local bg = make("Frame", {
@@ -1252,8 +1515,6 @@ function Zelo:CreateWindow(cfg)
                     TextSize = 10,
                 }, dropBtn)
 
-                -- FIX: dropdown agora é filho do WIN (raiz) para ficar acima de tudo
-                -- e posicionado via AbsolutePosition depois
                 local dropFrame = make("Frame", {
                     Size = UDim2.new(0, 100, 0, 0),
                     BackgroundColor3 = C.Surface3,
@@ -1295,7 +1556,7 @@ function Zelo:CreateWindow(cfg)
                                 tween(optBtn, 0.1, {BackgroundColor3 = C.Surface3})
                             end
                         end)
-                        optBtn.MouseButton1Click:Connect(function()
+                        onActivated(optBtn, function()
                             selected = opt
                             dropBtn.Text = selected
                             open = false
@@ -1308,19 +1569,16 @@ function Zelo:CreateWindow(cfg)
                 refreshOptions()
 
                 local function repositionDrop()
-                    -- Posiciona o dropFrame relativo ao WIN usando AbsolutePosition
                     local winPos = WIN.AbsolutePosition
                     local btnPos = dropBtn.AbsolutePosition
                     local btnSize = dropBtn.AbsoluteSize
-
                     local relX = btnPos.X - winPos.X
                     local relY = btnPos.Y - winPos.Y + btnSize.Y + 4
-
                     dropFrame.Position = UDim2.new(0, relX, 0, relY)
                     dropFrame.Size = UDim2.new(0, btnSize.X, 0, 0)
                 end
 
-                dropBtn.MouseButton1Click:Connect(function()
+                onActivated(dropBtn, function()
                     open = not open
                     dropArrow.Text = open and "^" or "v"
                     if open then
@@ -1381,52 +1639,56 @@ function Zelo:CreateWindow(cfg)
                     TextXAlignment = Enum.TextXAlignment.Right,
                 }, bg)
 
-                local sliderBG = make("Frame", {
+                local sliderBG2 = make("Frame", {
                     Size = UDim2.new(1, -20, 0, 6),
                     Position = UDim2.new(0, 10, 0, 24),
                     BackgroundColor3 = C.Surface3,
                 }, bg)
-                corner(3, sliderBG)
-                stroke(C.Border2, 1, sliderBG)
+                corner(3, sliderBG2)
+                stroke(C.Border2, 1, sliderBG2)
 
-                local sliderFill = make("Frame", {
+                local sliderFill2 = make("Frame", {
                     Size = UDim2.new((val - min) / (max - min), 0, 1, 0),
                     BackgroundColor3 = C.White,
-                }, sliderBG)
-                corner(3, sliderFill)
+                }, sliderBG2)
+                corner(3, sliderFill2)
 
                 local sliderKnob = make("Frame", {
                     Size = UDim2.new(0, 12, 0, 12),
                     Position = UDim2.new((val - min) / (max - min), -6, 0.5, -6),
                     BackgroundColor3 = C.White,
                     ZIndex = 2,
-                }, sliderBG)
+                }, sliderBG2)
                 corner(6, sliderKnob)
 
-                local dragging = false
+                local draggingSlider = false
                 local function setSlider(newVal)
                     val = math.clamp(newVal, min, max)
                     local percent = (val - min) / (max - min)
-                    sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+                    sliderFill2.Size = UDim2.new(percent, 0, 1, 0)
                     sliderKnob.Position = UDim2.new(percent, -6, 0.5, -6)
                     valLbl.Text = tostring(math.floor(val * 100) / 100)
                     if opts.Callback then opts.Callback(val) end
                 end
 
-                sliderBG.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging = true
+                sliderBG2.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
+                        draggingSlider = true
                     end
                 end)
                 UserInputService.InputEnded:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging = false
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
+                        draggingSlider = false
                     end
                 end)
                 RunService.RenderStepped:Connect(function()
-                    if dragging then
+                    if draggingSlider then
                         local mouseX = UserInputService:GetMouseLocation().X
-                        local relX = math.clamp((mouseX - sliderBG.AbsolutePosition.X) / sliderBG.AbsoluteSize.X, 0, 1)
+                        local relX = math.clamp(
+                            (mouseX - sliderBG2.AbsolutePosition.X) / sliderBG2.AbsoluteSize.X,
+                            0, 1)
                         setSlider(min + relX * (max - min))
                     end
                 end)
@@ -1473,7 +1735,6 @@ function Zelo:CreateWindow(cfg)
 
                 local pickerOpen = false
 
-                -- FIX: picker também vai pro WIN com ZIndex alto
                 local pickerFrame = make("Frame", {
                     Size = UDim2.new(0, 180, 0, 120),
                     BackgroundColor3 = C.Surface,
@@ -1519,7 +1780,6 @@ function Zelo:CreateWindow(cfg)
                 }, pickerFrame)
                 corner(4, bInput)
 
-                -- Labels R G B
                 local labels = {"R", "G", "B"}
                 local inputs = {rInput, gInput, bInput}
                 local xOffsets = {0, 0.35, 0.7}
@@ -1536,7 +1796,6 @@ function Zelo:CreateWindow(cfg)
                     }, pickerFrame)
                 end
 
-                -- Preview dentro do picker
                 local pickerPreview = make("Frame", {
                     Size = UDim2.new(1, -8, 0, 40),
                     Position = UDim2.new(0, 4, 0, 50),
@@ -1563,22 +1822,18 @@ function Zelo:CreateWindow(cfg)
                     local winPos = WIN.AbsolutePosition
                     local previewPos = colorPreview.AbsolutePosition
                     local previewSize = colorPreview.AbsoluteSize
-
                     local relX = previewPos.X - winPos.X - 180 + previewSize.X
                     local relY = previewPos.Y - winPos.Y + previewSize.Y + 4
-
                     pickerFrame.Position = UDim2.new(0, relX, 0, relY)
                 end
 
-                colorPreview.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                        pickerOpen = not pickerOpen
-                        if pickerOpen then
-                            repositionPicker()
-                            pickerFrame.Visible = true
-                        else
-                            pickerFrame.Visible = false
-                        end
+                onActivated(colorPreview, function(inp)
+                    pickerOpen = not pickerOpen
+                    if pickerOpen then
+                        repositionPicker()
+                        pickerFrame.Visible = true
+                    else
+                        pickerFrame.Visible = false
                     end
                 end)
 
@@ -1601,7 +1856,9 @@ function Zelo:CreateWindow(cfg)
         return TabObj
     end
 
+    -- ==============================================================
     -- KEY SYSTEM
+    -- ==============================================================
     if KeySystem then
         local KeyGui = make("ScreenGui", {
             Name = "ZeloKey",
@@ -1619,7 +1876,6 @@ function Zelo:CreateWindow(cfg)
             Active = true,
         }, KeyGui)
 
-        -- FIX: altura dinâmica com base no subtítulo
         local cardHeight = KeySubTitle and 280 or 240
 
         local KeyCard = make("Frame", {
@@ -1633,7 +1889,6 @@ function Zelo:CreateWindow(cfg)
         corner(12, KeyCard)
         stroke(C.Border, 1, KeyCard)
 
-        -- FIX: KeyTitle configurável
         make("TextLabel", {
             Size = UDim2.new(1, 0, 0, 30),
             Position = UDim2.new(0, 0, 0, 8),
@@ -1646,7 +1901,6 @@ function Zelo:CreateWindow(cfg)
             ZIndex = 1002,
         }, KeyCard)
 
-        -- FIX: KeySubTitle opcional
         if KeySubTitle then
             make("TextLabel", {
                 Size = UDim2.new(1, 0, 0, 16),
@@ -1709,7 +1963,6 @@ function Zelo:CreateWindow(cfg)
             ZIndex = 1002,
         }, KeyCard)
 
-        -- FIX: textos dos botões configuráveis
         local BtnConfirm = make("TextButton", {
             Size = UDim2.new(0.32, -4, 1, 0),
             BackgroundColor3 = C.Green,
@@ -1765,6 +2018,8 @@ function Zelo:CreateWindow(cfg)
         if savedKey and savedKey == ValidKey then
             KeyGui:Destroy()
             WIN.Visible = true
+            WIN_VISIBLE = true
+            setBlur(true)
             Zelo:Notify({
                 Title = KeyTitle,
                 Text = "Key carregada automaticamente!",
@@ -1773,10 +2028,12 @@ function Zelo:CreateWindow(cfg)
             })
         end
 
-        BtnConfirm.MouseButton1Click:Connect(function()
+        onActivated(BtnConfirm, function()
             if KeyInput.Text == ValidKey then
                 KeyGui:Destroy()
                 WIN.Visible = true
+                WIN_VISIBLE = true
+                setBlur(true)
                 if SaveKey then
                     pcall(function()
                         if writefile then
@@ -1809,21 +2066,23 @@ function Zelo:CreateWindow(cfg)
         end)
 
         if GetKeyLink then
-            BtnGetKey.MouseButton1Click:Connect(function()
+            onActivated(BtnGetKey, function()
                 pcall(function() setclipboard(GetKeyLink) end)
                 BtnGetKey.Text = "Copiado!"
                 task.delay(1.5, function() BtnGetKey.Text = KeyGetText end)
             end)
         end
 
-        BtnClose.MouseButton1Click:Connect(function()
+        onActivated(BtnClose, function()
             KeyGui:Destroy()
             MAIN_GUI:Destroy()
             if BLUR_OBJ then BLUR_OBJ:Destroy() end
         end)
     end
 
+    -- ==============================================================
     -- DISCORD (sem key system)
+    -- ==============================================================
     if Discord and not KeySystem then
         local DiscordGui = make("ScreenGui", {
             Name = "ZeloDiscord",
@@ -1903,23 +2162,27 @@ function Zelo:CreateWindow(cfg)
         corner(8, DClose)
         stroke(C.Border, 1, DClose)
 
-        DCopy.MouseButton1Click:Connect(function()
+        onActivated(DCopy, function()
             pcall(function() setclipboard(Discord) end)
             DCopy.Text = "Copiado!"
             task.delay(1.5, function() DCopy.Text = "Copiar Invite" end)
         end)
 
-        DClose.MouseButton1Click:Connect(function()
+        onActivated(DClose, function()
             DiscordGui:Destroy()
             WIN.Visible = true
+            WIN_VISIBLE = true
+            setBlur(true)
         end)
     end
 
     if not KeySystem and not Discord then
         WIN.Visible = true
+        WIN_VISIBLE = true
+        setBlur(true)
     end
 
-    print("[Zelo] Library v2.2.0 carregada | " .. NAME)
+    print("[Zelo] Library v2.3.0 carregada | " .. NAME)
     return WindowObj
 end
 
