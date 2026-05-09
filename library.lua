@@ -10,6 +10,9 @@
     - Bug corrigido: fechar com X e reabrir com ToggleKey funciona corretamente
     - Botão Unload nas settings
     - Settings é padrão em todos os scripts da library
+
+    FIX EXTRA:
+    - Containers das tabs agora são ScrollingFrame: elementos não atravessam a UI
 ]]
 
 local Players = game:GetService("Players")
@@ -247,7 +250,7 @@ function Zelo:CreateWindow(cfg)
     local KeyConfirmText = cfg.KeyConfirmText or "Confirmar"
     local KeyCloseText   = cfg.KeyCloseText   or "Fechar"
 
-    local WIN_VISIBLE = false   -- começa false, só fica true após KeySystem/Discord/direto
+    local WIN_VISIBLE = false
     local WIN_ALPHA = Transparency
     local TABS = {}
     local ACTIVE_TAB = nil
@@ -257,7 +260,6 @@ function Zelo:CreateWindow(cfg)
     local WIN = nil
     local WindowObj = nil
 
-    -- Blur só ativado enquanto janela aberta E não minimizada
     if BlurEnabled then
         BLUR_OBJ = Instance.new("BlurEffect")
         BLUR_OBJ.Size = 0
@@ -285,7 +287,6 @@ function Zelo:CreateWindow(cfg)
     }, CoreGui)
     pcall(function() MAIN_GUI.Parent = LP:WaitForChild("PlayerGui") end)
 
-    -- Mobile: tamanho adaptado
     local WIN_W = IS_MOBILE and 580 or 720
     local WIN_H = IS_MOBILE and 420 or 500
     local WIN_X = IS_MOBILE and -WIN_W/2 or -360
@@ -300,7 +301,7 @@ function Zelo:CreateWindow(cfg)
         BackgroundColor3 = C.BG,
         BackgroundTransparency = WIN_ALPHA,
         Active = true,
-        ClipsDescendants = false,
+        ClipsDescendants = true,   -- FIX: impede elementos de vazarem pela janela
         Visible = false,
     }, MAIN_GUI)
     corner(12, WIN)
@@ -359,7 +360,6 @@ function Zelo:CreateWindow(cfg)
         TextXAlignment = Enum.TextXAlignment.Left,
     }, LogoF)
 
-    -- Botão do usuário (abre Settings)
     local UserBtn = make("TextButton", {
         Name = "UserBtn",
         Size = UDim2.new(0, 120, 0, 28),
@@ -457,7 +457,7 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, 0, 1, -46),
         Position = UDim2.new(0, 0, 0, 46),
         BackgroundTransparency = 1,
-        ClipsDescendants = false,
+        ClipsDescendants = true,   -- FIX: impede conteúdo de vazar abaixo do header
     }, WIN)
 
     local Sidebar = make("Frame", {
@@ -508,7 +508,7 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, -160, 1, 0),
         Position = UDim2.new(0, 160, 0, 0),
         BackgroundTransparency = 1,
-        ClipsDescendants = false,
+        ClipsDescendants = true,   -- FIX: clip na área de conteúdo
     }, Body)
 
     -- ==============================================================
@@ -519,7 +519,7 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, -160, 1, 0),
         Position = UDim2.new(0, 160, 0, 0),
         BackgroundTransparency = 1,
-        ClipsDescendants = false,
+        ClipsDescendants = true,
         Visible = false,
     }, Body)
 
@@ -886,7 +886,6 @@ function Zelo:CreateWindow(cfg)
         WIN_VISIBLE = true
         bodyMinimized = false
         tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, WIN_H)})
-        -- Blur NÃO é ativado ao expandir — mantém estado atual
     end
 
     local function hideWindow()
@@ -896,32 +895,22 @@ function Zelo:CreateWindow(cfg)
         task.delay(0.2, function()
             Body.Visible = false
         end)
-        -- Blur NÃO é desativado ao minimizar
     end
 
     MinBtn.MouseButton1Click:Connect(function()
-        if bodyMinimized then
-            showWindow()
-        else
-            hideWindow()
-        end
+        if bodyMinimized then showWindow() else hideWindow() end
     end)
     MinBtn.TouchTap:Connect(function()
-        if bodyMinimized then
-            showWindow()
-        else
-            hideWindow()
-        end
+        if bodyMinimized then showWindow() else hideWindow() end
     end)
 
-    -- Fechar: esconde a janela, reseta estado para poder reabrir com ToggleKey
     CloseBtn.MouseButton1Click:Connect(function()
         tween(WIN, 0.2, {Size = UDim2.new(0, WIN_W, 0, 0)})
         task.delay(0.2, function()
             WIN.Visible = false
-            Body.Visible = true  -- reset para quando reabrir
+            Body.Visible = true
             WIN_VISIBLE = false
-            bodyMinimized = false  -- FIX: reseta estado para ToggleKey funcionar
+            bodyMinimized = false
         end)
     end)
     CloseBtn.TouchTap:Connect(function()
@@ -934,12 +923,10 @@ function Zelo:CreateWindow(cfg)
         end)
     end)
 
-    -- ToggleKey: abre se fechado, minimiza/expande se visível
     UserInputService.InputBegan:Connect(function(inp, gp)
         if gp then return end
         if inp.KeyCode == ToggleKey and not listeningKB then
             if not WIN.Visible then
-                -- estava fechado (X foi pressionado), reabre
                 WIN.Size = UDim2.new(0, WIN_W, 0, 0)
                 WIN.Visible = true
                 Body.Visible = true
@@ -964,11 +951,10 @@ function Zelo:CreateWindow(cfg)
     end)
 
     -- ==============================================================
-    -- SETTINGS TAB TOGGLE (botão do nome)
+    -- SETTINGS TAB TOGGLE
     -- ==============================================================
     local function openSettings()
         SETTINGS_ACTIVE = true
-        -- Esconde tab atual
         if ACTIVE_TAB then
             ACTIVE_TAB.Frame.Visible = false
             ACTIVE_TAB.SectionSearch.Visible = false
@@ -987,7 +973,6 @@ function Zelo:CreateWindow(cfg)
         UserBtn.BackgroundColor3 = C.Surface2
         UserBtn.TextColor3 = C.Dim
         UserBtn.BackgroundTransparency = 1
-        -- Restaura tab ativa
         if ACTIVE_TAB then
             ACTIVE_TAB.Frame.Visible = true
             ACTIVE_TAB.SectionSearch.Visible = true
@@ -1009,11 +994,7 @@ function Zelo:CreateWindow(cfg)
         end
     end)
     onActivated(UserBtn, function()
-        if SETTINGS_ACTIVE then
-            closeSettings()
-        else
-            openSettings()
-        end
+        if SETTINGS_ACTIVE then closeSettings() else openSettings() end
     end)
 
     -- ==============================================================
@@ -1022,16 +1003,13 @@ function Zelo:CreateWindow(cfg)
     WindowObj = {}
 
     local function selectTab(tabObj)
-        if SETTINGS_ACTIVE then
-            closeSettings()
-        end
+        if SETTINGS_ACTIVE then closeSettings() end
         if ACTIVE_TAB then
             ACTIVE_TAB.Btn.BackgroundColor3 = C.Surface2
             ACTIVE_TAB.Btn.TextColor3 = C.Dim
             ACTIVE_TAB.Frame.Visible = false
             ACTIVE_TAB.SectionSearch.Visible = false
         end
-
         ACTIVE_TAB = tabObj
         tabObj.Btn.BackgroundColor3 = C.TabBG
         tabObj.Btn.TextColor3 = C.Black
@@ -1059,7 +1037,7 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             Visible = false,
-            ClipsDescendants = false,
+            ClipsDescendants = true,   -- FIX: clip no frame da tab
         }, ContentArea)
 
         local secSearch = make("TextBox", {
@@ -1080,23 +1058,36 @@ function Zelo:CreateWindow(cfg)
         stroke(C.Border, 1, secSearch)
         pad(0, 0, 8, 8, secSearch)
 
-        local leftContainer = make("Frame", {
+        -- FIX PRINCIPAL: ScrollingFrame em vez de Frame para os containers
+        local leftContainer = make("ScrollingFrame", {
             Name = "LeftContainer",
             Size = UDim2.new(0.5, -10, 1, -48),
             Position = UDim2.new(0, 14, 0, 44),
             BackgroundTransparency = 1,
-            ClipsDescendants = false,
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = C.Border2,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ElasticBehavior = Enum.ElasticBehavior.Never,
+            ClipsDescendants = true,
         }, tabFrame)
         listLayout(Enum.FillDirection.Vertical, 10, leftContainer)
+        pad(0, 8, 0, 4, leftContainer)
 
-        local rightContainer = make("Frame", {
+        local rightContainer = make("ScrollingFrame", {
             Name = "RightContainer",
             Size = UDim2.new(0.5, -10, 1, -48),
             Position = UDim2.new(0.5, 4, 0, 44),
             BackgroundTransparency = 1,
-            ClipsDescendants = false,
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = C.Border2,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ElasticBehavior = Enum.ElasticBehavior.Never,
+            ClipsDescendants = true,
         }, tabFrame)
         listLayout(Enum.FillDirection.Vertical, 10, rightContainer)
+        pad(0, 8, 4, 0, rightContainer)
 
         secSearch:GetPropertyChangedSignal("Text"):Connect(function()
             local q = secSearch.Text:lower()
@@ -1516,6 +1507,7 @@ function Zelo:CreateWindow(cfg)
                     TextSize = 10,
                 }, dropBtn)
 
+                -- Dropdown flutua no WIN (fora dos ScrollingFrames) para não ser cortado
                 local dropFrame = make("Frame", {
                     Size = UDim2.new(0, 100, 0, 0),
                     BackgroundColor3 = C.Surface3,
@@ -1736,6 +1728,7 @@ function Zelo:CreateWindow(cfg)
 
                 local pickerOpen = false
 
+                -- Picker também flutua no WIN para não ser cortado pelo ScrollingFrame
                 local pickerFrame = make("Frame", {
                     Size = UDim2.new(0, 180, 0, 120),
                     BackgroundColor3 = C.Surface,
