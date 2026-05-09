@@ -1,6 +1,11 @@
 --[[
-    Zelo Library v2.1.0
+    Zelo Library v2.2.0
     UI Library para Roblox
+    
+    FIXES v2.2.0:
+    - Dropdown/ColorPicker agora ficam no topo (ZIndex correto)
+    - Buscar tabs some ao minimizar
+    - Key System totalmente configurável (titulo, subtitulo, etc)
 ]]
 
 local Players = game:GetService("Players")
@@ -213,6 +218,13 @@ function Zelo:CreateWindow(cfg)
     local Transparency = math.clamp(cfg.Transparency or 0.05, 0, 0.9)
     local BlurEnabled = cfg.Blur ~= false
 
+    -- FIX: Key System configurável
+    local KeyTitle    = cfg.KeyTitle    or "Key System"
+    local KeySubTitle = cfg.KeySubTitle or nil  -- se nil, não aparece
+    local KeyGetText  = cfg.KeyGetText  or "Get Key"
+    local KeyConfirmText = cfg.KeyConfirmText or "Confirmar"
+    local KeyCloseText   = cfg.KeyCloseText   or "Fechar"
+
     local WIN_VISIBLE = true
     local WIN_ALPHA = Transparency
     local TABS = {}
@@ -222,7 +234,6 @@ function Zelo:CreateWindow(cfg)
     local WIN = nil
     local WindowObj = nil
 
-    -- Blur do FUNDO DO JOGO (Lighting)
     if BlurEnabled then
         BLUR_OBJ = Instance.new("BlurEffect")
         BLUR_OBJ.Size = 0
@@ -230,7 +241,6 @@ function Zelo:CreateWindow(cfg)
         tween(BLUR_OBJ, 0.5, {Size = 20})
     end
 
-    -- ScreenGui principal
     MAIN_GUI = make("ScreenGui", {
         Name = "ZeloLib",
         ResetOnSpawn = false,
@@ -238,7 +248,6 @@ function Zelo:CreateWindow(cfg)
     }, CoreGui)
     pcall(function() MAIN_GUI.Parent = LP:WaitForChild("PlayerGui") end)
 
-    -- JANELA PRINCIPAL
     WIN = make("Frame", {
         Name = "Window",
         Size = UDim2.new(0, 720, 0, 500),
@@ -247,12 +256,11 @@ function Zelo:CreateWindow(cfg)
         BackgroundTransparency = WIN_ALPHA,
         Active = true,
         ClipsDescendants = false,
-        Visible = false, -- Comeca invisivel, mostra depois de validar
+        Visible = false,
     }, MAIN_GUI)
     corner(12, WIN)
     stroke(C.Border, 1, WIN)
 
-    -- Sombra
     make("ImageLabel", {
         Size = UDim2.new(1, 60, 1, 60),
         Position = UDim2.new(0, -30, 0, -30),
@@ -265,7 +273,6 @@ function Zelo:CreateWindow(cfg)
         ZIndex = 0,
     }, WIN)
 
-    -- HEADER
     local Header = make("Frame", {
         Name = "Header",
         Size = UDim2.new(1, 0, 0, 46),
@@ -280,7 +287,6 @@ function Zelo:CreateWindow(cfg)
         BackgroundColor3 = C.Border,
     }, Header)
 
-    -- Logo
     local LogoF = make("Frame", {
         Size = UDim2.new(0, 120, 1, 0),
         BackgroundTransparency = 1,
@@ -308,7 +314,6 @@ function Zelo:CreateWindow(cfg)
         TextXAlignment = Enum.TextXAlignment.Left,
     }, LogoF)
 
-    -- Botao usuario (entre logo e controles)
     local UserBtn = make("TextButton", {
         Name = "UserBtn",
         Size = UDim2.new(0, 120, 0, 28),
@@ -323,7 +328,6 @@ function Zelo:CreateWindow(cfg)
     }, Header)
     corner(6, UserBtn)
 
-    -- Minimizar
     local MinBtn = make("TextButton", {
         Name = "MinBtn",
         Size = UDim2.new(0, 32, 0, 32),
@@ -343,19 +347,7 @@ function Zelo:CreateWindow(cfg)
     MinBtn.MouseLeave:Connect(function()
         tween(MinBtn, 0.15, {BackgroundColor3 = C.Surface2, TextColor3 = C.Dim})
     end)
-    MinBtn.MouseButton1Click:Connect(function()
-        WIN_VISIBLE = not WIN_VISIBLE
-        if WIN_VISIBLE then
-            WIN.Visible = true
-            tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 500)})
-            if BLUR_OBJ then BLUR_OBJ.Enabled = true end
-        else
-            tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 46)})
-            if BLUR_OBJ then BLUR_OBJ.Enabled = false end
-        end
-    end)
 
-    -- Fechar
     local CloseBtn = make("TextButton", {
         Name = "CloseBtn",
         Size = UDim2.new(0, 32, 0, 32),
@@ -384,7 +376,6 @@ function Zelo:CreateWindow(cfg)
         end)
     end)
 
-    -- Dragging (header only)
     local dragging = false
     local dragStart, startPos
 
@@ -412,7 +403,6 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- BODY
     local Body = make("Frame", {
         Name = "Body",
         Size = UDim2.new(1, 0, 1, -46),
@@ -420,7 +410,6 @@ function Zelo:CreateWindow(cfg)
         BackgroundTransparency = 1,
     }, WIN)
 
-    -- SIDEBAR
     local Sidebar = make("Frame", {
         Name = "Sidebar",
         Size = UDim2.new(0, 160, 1, 0),
@@ -434,7 +423,6 @@ function Zelo:CreateWindow(cfg)
         BackgroundColor3 = C.Border,
     }, Sidebar)
 
-    -- Tab Search
     local TabSearch = make("TextBox", {
         Name = "TabSearch",
         Size = UDim2.new(1, -16, 0, 30),
@@ -452,7 +440,6 @@ function Zelo:CreateWindow(cfg)
     stroke(C.Border, 1, TabSearch)
     pad(0, 0, 8, 8, TabSearch)
 
-    -- Tab Scroll
     local TabScroll = make("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, -50),
         Position = UDim2.new(0, 0, 0, 46),
@@ -466,32 +453,56 @@ function Zelo:CreateWindow(cfg)
     listLayout(Enum.FillDirection.Vertical, 2, TabScroll)
     pad(6, 6, 6, 6, TabScroll)
 
-    -- Content Area
     local ContentArea = make("Frame", {
         Name = "ContentArea",
         Size = UDim2.new(1, -160, 1, 0),
         Position = UDim2.new(0, 160, 0, 0),
         BackgroundTransparency = 1,
-        ClipsDescendants = true,
+        -- FIX: removido ClipsDescendants = true para dropdowns não ficarem cortados
+        ClipsDescendants = false,
     }, Body)
 
-    -- Toggle visibilidade global
+    -- FIX: minimizar esconde TabSearch e body inteiro corretamente
+    local bodyMinimized = false
+    MinBtn.MouseButton1Click:Connect(function()
+        bodyMinimized = not bodyMinimized
+        if not bodyMinimized then
+            -- expandir
+            WIN.Visible = true
+            Body.Visible = true
+            tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 500)})
+            if BLUR_OBJ then BLUR_OBJ.Enabled = true end
+        else
+            -- minimizar: esconde body (inclui sidebar e TabSearch)
+            tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 46)})
+            task.delay(0.2, function()
+                Body.Visible = false
+            end)
+            if BLUR_OBJ then BLUR_OBJ.Enabled = false end
+        end
+        WIN_VISIBLE = not bodyMinimized
+    end)
+
     UserInputService.InputBegan:Connect(function(inp, gp)
         if gp then return end
         if inp.KeyCode == ToggleKey then
-            if WIN_VISIBLE and WIN.Size.Y.Offset > 46 then
-                tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 46)})
-                if BLUR_OBJ then BLUR_OBJ.Enabled = false end
-            else
+            bodyMinimized = not bodyMinimized
+            if not bodyMinimized then
                 WIN.Visible = true
+                Body.Visible = true
                 tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 500)})
                 if BLUR_OBJ then BLUR_OBJ.Enabled = true end
+            else
+                tween(WIN, 0.2, {Size = UDim2.new(0, 720, 0, 46)})
+                task.delay(0.2, function()
+                    Body.Visible = false
+                end)
+                if BLUR_OBJ then BLUR_OBJ.Enabled = false end
             end
-            WIN_VISIBLE = not WIN_VISIBLE
+            WIN_VISIBLE = not bodyMinimized
         end
     end)
 
-    -- Tab search
     TabSearch:GetPropertyChangedSignal("Text"):Connect(function()
         local q = TabSearch.Text:lower()
         for _, btn in pairs(TabScroll:GetChildren()) do
@@ -501,7 +512,7 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- Hub Settings (estilo tab)
+    -- HUB SETTINGS
     local HubPanel = make("Frame", {
         Name = "HubSettings",
         Size = UDim2.new(0, 220, 0, 0),
@@ -539,7 +550,6 @@ function Zelo:CreateWindow(cfg)
         return lbl
     end
 
-    -- Hub toggle (estilo tab - branco quando aberto)
     local hubOpen = false
     local function toggleHub()
         hubOpen = not hubOpen
@@ -575,7 +585,6 @@ function Zelo:CreateWindow(cfg)
     end)
     UserBtn.MouseButton1Click:Connect(toggleHub)
 
-    -- Toggle Key no Hub
     hubLabel("KEYBIND PARA ESCONDER")
     local kbRow = make("Frame", {
         Size = UDim2.new(1, 0, 0, 36),
@@ -613,7 +622,6 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- Transparencia no Hub
     hubLabel("TRANSPARENCIA")
     local alphaRow = make("Frame", {
         Size = UDim2.new(1, 0, 0, 40),
@@ -686,7 +694,6 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- Blur Toggle no Hub
     if BlurEnabled then
         hubLabel("BLUR DO FUNDO")
         local blurRow = make("Frame", {
@@ -720,7 +727,6 @@ function Zelo:CreateWindow(cfg)
         end)
     end
 
-    -- Discord no Hub
     if Discord then
         hubLabel("DISCORD")
         local dcBtn = make("TextButton", {
@@ -781,6 +787,8 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             Visible = false,
+            -- FIX: ClipsDescendants false para dropdown sobrepor corretamente
+            ClipsDescendants = false,
         }, ContentArea)
 
         local secSearch = make("TextBox", {
@@ -806,6 +814,8 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(0.5, -10, 1, -48),
             Position = UDim2.new(0, 14, 0, 44),
             BackgroundTransparency = 1,
+            -- FIX: sem ClipsDescendants para dropdown não cortar
+            ClipsDescendants = false,
         }, tabFrame)
         listLayout(Enum.FillDirection.Vertical, 10, leftContainer)
 
@@ -814,6 +824,7 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(0.5, -10, 1, -48),
             Position = UDim2.new(0.5, 4, 0, 44),
             BackgroundTransparency = 1,
+            ClipsDescendants = false,
         }, tabFrame)
         listLayout(Enum.FillDirection.Vertical, 10, rightContainer)
 
@@ -871,6 +882,8 @@ function Zelo:CreateWindow(cfg)
                 BackgroundColor3 = C.Surface,
                 BackgroundTransparency = WIN_ALPHA,
                 AutomaticSize = Enum.AutomaticSize.Y,
+                -- FIX: sem ClipsDescendants para dropdown sobrepor
+                ClipsDescendants = false,
             }, container)
             gbFrame:SetAttribute("Title", sTitle or "")
             corner(8, gbFrame)
@@ -880,6 +893,7 @@ function Zelo:CreateWindow(cfg)
                 Size = UDim2.new(1, 0, 0, 0),
                 BackgroundTransparency = 1,
                 AutomaticSize = Enum.AutomaticSize.Y,
+                ClipsDescendants = false,
             }, gbFrame)
             gbInner.AutomaticSize = Enum.AutomaticSize.Y
             pad(10, 10, 12, 12, gbInner)
@@ -936,6 +950,8 @@ function Zelo:CreateWindow(cfg)
                     Size = UDim2.new(1, 0, 0, h or 32),
                     BackgroundTransparency = 1,
                     LayoutOrder = nextOrder(),
+                    -- FIX: sem ClipsDescendants
+                    ClipsDescendants = false,
                 }, secInner)
             end
 
@@ -1189,9 +1205,14 @@ function Zelo:CreateWindow(cfg)
                 local options = opts.Options or {}
                 local selected = opts.Default or (options[1] or "")
                 local row = makeRow(34)
+
+                -- FIX: row não clipa
+                row.ClipsDescendants = false
+
                 local bg = make("Frame", {
                     Size = UDim2.new(1, 0, 1, 0),
                     BackgroundColor3 = C.Surface2,
+                    ClipsDescendants = false,
                 }, row)
                 corner(6, bg)
                 stroke(C.Border, 1, bg)
@@ -1216,6 +1237,7 @@ function Zelo:CreateWindow(cfg)
                     Font = Enum.Font.GothamBold,
                     TextSize = 10,
                     AutoButtonColor = false,
+                    ClipsDescendants = false,
                 }, bg)
                 corner(5, dropBtn)
                 stroke(C.Border, 1, dropBtn)
@@ -1230,20 +1252,22 @@ function Zelo:CreateWindow(cfg)
                     TextSize = 10,
                 }, dropBtn)
 
+                -- FIX: dropdown agora é filho do WIN (raiz) para ficar acima de tudo
+                -- e posicionado via AbsolutePosition depois
                 local dropFrame = make("Frame", {
-                    Size = UDim2.new(1, 0, 0, 0),
-                    Position = UDim2.new(0, 0, 1, 4),
+                    Size = UDim2.new(0, 100, 0, 0),
                     BackgroundColor3 = C.Surface3,
                     Visible = false,
-                    ZIndex = 10,
+                    ZIndex = 200,
                     AutomaticSize = Enum.AutomaticSize.Y,
-                }, dropBtn)
+                }, WIN)
                 corner(6, dropFrame)
                 stroke(C.Border, 1, dropFrame)
                 listLayout(Enum.FillDirection.Vertical, 1, dropFrame)
                 pad(2, 2, 2, 2, dropFrame)
 
                 local open = false
+
                 local function refreshOptions()
                     for _, child in pairs(dropFrame:GetChildren()) do
                         if child:IsA("TextButton") then child:Destroy() end
@@ -1257,7 +1281,7 @@ function Zelo:CreateWindow(cfg)
                             Font = Enum.Font.Gotham,
                             TextSize = 10,
                             AutoButtonColor = false,
-                            ZIndex = 11,
+                            ZIndex = 201,
                         }, dropFrame)
                         corner(4, optBtn)
 
@@ -1283,11 +1307,29 @@ function Zelo:CreateWindow(cfg)
                 end
                 refreshOptions()
 
+                local function repositionDrop()
+                    -- Posiciona o dropFrame relativo ao WIN usando AbsolutePosition
+                    local winPos = WIN.AbsolutePosition
+                    local btnPos = dropBtn.AbsolutePosition
+                    local btnSize = dropBtn.AbsoluteSize
+
+                    local relX = btnPos.X - winPos.X
+                    local relY = btnPos.Y - winPos.Y + btnSize.Y + 4
+
+                    dropFrame.Position = UDim2.new(0, relX, 0, relY)
+                    dropFrame.Size = UDim2.new(0, btnSize.X, 0, 0)
+                end
+
                 dropBtn.MouseButton1Click:Connect(function()
                     open = not open
-                    dropFrame.Visible = open
                     dropArrow.Text = open and "^" or "v"
-                    if open then refreshOptions() end
+                    if open then
+                        refreshOptions()
+                        repositionDrop()
+                        dropFrame.Visible = true
+                    else
+                        dropFrame.Visible = false
+                    end
                 end)
 
                 local ctrl = {}
@@ -1399,9 +1441,12 @@ function Zelo:CreateWindow(cfg)
                 opts = opts or {}
                 local color = opts.Default or Color3.fromRGB(255, 255, 255)
                 local row = makeRow(32)
+                row.ClipsDescendants = false
+
                 local bg = make("Frame", {
                     Size = UDim2.new(1, 0, 1, 0),
                     BackgroundColor3 = C.Surface2,
+                    ClipsDescendants = false,
                 }, row)
                 corner(6, bg)
                 stroke(C.Border, 1, bg)
@@ -1421,18 +1466,20 @@ function Zelo:CreateWindow(cfg)
                     Size = UDim2.new(0, 28, 0, 22),
                     Position = UDim2.new(1, -38, 0.5, -11),
                     BackgroundColor3 = color,
+                    ClipsDescendants = false,
                 }, bg)
                 corner(4, colorPreview)
                 stroke(C.Border, 1, colorPreview)
 
                 local pickerOpen = false
+
+                -- FIX: picker também vai pro WIN com ZIndex alto
                 local pickerFrame = make("Frame", {
                     Size = UDim2.new(0, 180, 0, 120),
-                    Position = UDim2.new(1, -190, 1, 4),
                     BackgroundColor3 = C.Surface,
                     Visible = false,
-                    ZIndex = 20,
-                }, colorPreview)
+                    ZIndex = 200,
+                }, WIN)
                 corner(8, pickerFrame)
                 stroke(C.Border, 1, pickerFrame)
 
@@ -1444,7 +1491,7 @@ function Zelo:CreateWindow(cfg)
                     TextColor3 = C.Text,
                     Font = Enum.Font.Gotham,
                     TextSize = 10,
-                    ZIndex = 21,
+                    ZIndex = 201,
                 }, pickerFrame)
                 corner(4, rInput)
 
@@ -1456,7 +1503,7 @@ function Zelo:CreateWindow(cfg)
                     TextColor3 = C.Text,
                     Font = Enum.Font.Gotham,
                     TextSize = 10,
-                    ZIndex = 21,
+                    ZIndex = 201,
                 }, pickerFrame)
                 corner(4, gInput)
 
@@ -1468,9 +1515,35 @@ function Zelo:CreateWindow(cfg)
                     TextColor3 = C.Text,
                     Font = Enum.Font.Gotham,
                     TextSize = 10,
-                    ZIndex = 21,
+                    ZIndex = 201,
                 }, pickerFrame)
                 corner(4, bInput)
+
+                -- Labels R G B
+                local labels = {"R", "G", "B"}
+                local inputs = {rInput, gInput, bInput}
+                local xOffsets = {0, 0.35, 0.7}
+                for i, lbl in ipairs(labels) do
+                    make("TextLabel", {
+                        Size = UDim2.new(0.3, -4, 0, 14),
+                        Position = UDim2.new(xOffsets[i], 4, 0, 30),
+                        BackgroundTransparency = 1,
+                        Text = lbl,
+                        TextColor3 = C.Muted,
+                        Font = Enum.Font.GothamBold,
+                        TextSize = 9,
+                        ZIndex = 201,
+                    }, pickerFrame)
+                end
+
+                -- Preview dentro do picker
+                local pickerPreview = make("Frame", {
+                    Size = UDim2.new(1, -8, 0, 40),
+                    Position = UDim2.new(0, 4, 0, 50),
+                    BackgroundColor3 = color,
+                    ZIndex = 201,
+                }, pickerFrame)
+                corner(6, pickerPreview)
 
                 local function updateColor()
                     local r = math.clamp(tonumber(rInput.Text) or 0, 0, 255)
@@ -1478,6 +1551,7 @@ function Zelo:CreateWindow(cfg)
                     local b = math.clamp(tonumber(bInput.Text) or 0, 0, 255)
                     color = Color3.fromRGB(r, g, b)
                     colorPreview.BackgroundColor3 = color
+                    pickerPreview.BackgroundColor3 = color
                     if opts.Callback then opts.Callback(color) end
                 end
 
@@ -1485,10 +1559,26 @@ function Zelo:CreateWindow(cfg)
                 gInput.FocusLost:Connect(updateColor)
                 bInput.FocusLost:Connect(updateColor)
 
+                local function repositionPicker()
+                    local winPos = WIN.AbsolutePosition
+                    local previewPos = colorPreview.AbsolutePosition
+                    local previewSize = colorPreview.AbsoluteSize
+
+                    local relX = previewPos.X - winPos.X - 180 + previewSize.X
+                    local relY = previewPos.Y - winPos.Y + previewSize.Y + 4
+
+                    pickerFrame.Position = UDim2.new(0, relX, 0, relY)
+                end
+
                 colorPreview.InputBegan:Connect(function(inp)
                     if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                         pickerOpen = not pickerOpen
-                        pickerFrame.Visible = pickerOpen
+                        if pickerOpen then
+                            repositionPicker()
+                            pickerFrame.Visible = true
+                        else
+                            pickerFrame.Visible = false
+                        end
                     end
                 end)
 
@@ -1496,6 +1586,7 @@ function Zelo:CreateWindow(cfg)
                 function ctrl:Set(c)
                     color = c
                     colorPreview.BackgroundColor3 = c
+                    pickerPreview.BackgroundColor3 = c
                     rInput.Text = tostring(math.floor(c.R * 255))
                     gInput.Text = tostring(math.floor(c.G * 255))
                     bInput.Text = tostring(math.floor(c.B * 255))
@@ -1510,7 +1601,7 @@ function Zelo:CreateWindow(cfg)
         return TabObj
     end
 
-    -- KEY SYSTEM (overlay separado, destroi quando valida)
+    -- KEY SYSTEM
     if KeySystem then
         local KeyGui = make("ScreenGui", {
             Name = "ZeloKey",
@@ -1528,10 +1619,13 @@ function Zelo:CreateWindow(cfg)
             Active = true,
         }, KeyGui)
 
+        -- FIX: altura dinâmica com base no subtítulo
+        local cardHeight = KeySubTitle and 280 or 240
+
         local KeyCard = make("Frame", {
             Name = "Card",
-            Size = UDim2.new(0, 400, 0, 240),
-            Position = UDim2.new(0.5, -200, 0.5, -120),
+            Size = UDim2.new(0, 400, 0, cardHeight),
+            Position = UDim2.new(0.5, -200, 0.5, -cardHeight/2),
             BackgroundColor3 = C.Surface,
             ZIndex = 1001,
             Active = true,
@@ -1539,10 +1633,12 @@ function Zelo:CreateWindow(cfg)
         corner(12, KeyCard)
         stroke(C.Border, 1, KeyCard)
 
+        -- FIX: KeyTitle configurável
         make("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 44),
+            Size = UDim2.new(1, 0, 0, 30),
+            Position = UDim2.new(0, 0, 0, 8),
             BackgroundTransparency = 1,
-            Text = "Key System",
+            Text = KeyTitle,
             TextColor3 = C.White,
             Font = Enum.Font.GothamBold,
             TextSize = 18,
@@ -1550,16 +1646,33 @@ function Zelo:CreateWindow(cfg)
             ZIndex = 1002,
         }, KeyCard)
 
+        -- FIX: KeySubTitle opcional
+        if KeySubTitle then
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 16),
+                Position = UDim2.new(0, 0, 0, 38),
+                BackgroundTransparency = 1,
+                Text = KeySubTitle,
+                TextColor3 = C.Muted,
+                Font = Enum.Font.Gotham,
+                TextSize = 11,
+                TextXAlignment = Enum.TextXAlignment.Center,
+                ZIndex = 1002,
+            }, KeyCard)
+        end
+
+        local separatorY = KeySubTitle and 58 or 42
         make("Frame", {
             Size = UDim2.new(1, -40, 0, 1),
-            Position = UDim2.new(0, 20, 0, 44),
+            Position = UDim2.new(0, 20, 0, separatorY),
             BackgroundColor3 = C.Border,
             ZIndex = 1002,
         }, KeyCard)
 
+        local noteY = separatorY + 8
         make("TextLabel", {
             Size = UDim2.new(1, -40, 0, 50),
-            Position = UDim2.new(0, 20, 0, 54),
+            Position = UDim2.new(0, 20, 0, noteY),
             BackgroundTransparency = 1,
             Text = KeyNote,
             TextColor3 = C.Dim,
@@ -1570,9 +1683,10 @@ function Zelo:CreateWindow(cfg)
             ZIndex = 1002,
         }, KeyCard)
 
+        local inputY = noteY + 58
         local KeyInput = make("TextBox", {
             Size = UDim2.new(1, -40, 0, 38),
-            Position = UDim2.new(0, 20, 0, 112),
+            Position = UDim2.new(0, 20, 0, inputY),
             BackgroundColor3 = C.Surface2,
             Text = "",
             PlaceholderText = "Digite a key aqui...",
@@ -1587,18 +1701,19 @@ function Zelo:CreateWindow(cfg)
         stroke(C.Border, 1, KeyInput)
         pad(0, 0, 12, 12, KeyInput)
 
-        -- Botoes em linha
+        local btnY = inputY + 46
         local BtnRow = make("Frame", {
             Size = UDim2.new(1, -40, 0, 34),
-            Position = UDim2.new(0, 20, 0, 162),
+            Position = UDim2.new(0, 20, 0, btnY),
             BackgroundTransparency = 1,
             ZIndex = 1002,
         }, KeyCard)
 
+        -- FIX: textos dos botões configuráveis
         local BtnConfirm = make("TextButton", {
             Size = UDim2.new(0.32, -4, 1, 0),
             BackgroundColor3 = C.Green,
-            Text = "Confirmar",
+            Text = KeyConfirmText,
             TextColor3 = C.White,
             Font = Enum.Font.GothamBold,
             TextSize = 12,
@@ -1611,7 +1726,7 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(0.32, -4, 1, 0),
             Position = UDim2.new(0.34, 0, 0, 0),
             BackgroundColor3 = C.Blue,
-            Text = "Get Key",
+            Text = KeyGetText,
             TextColor3 = C.White,
             Font = Enum.Font.GothamBold,
             TextSize = 12,
@@ -1625,7 +1740,7 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(0.32, -4, 1, 0),
             Position = UDim2.new(0.68, 0, 0, 0),
             BackgroundColor3 = C.Surface3,
-            Text = "Fechar",
+            Text = KeyCloseText,
             TextColor3 = C.Dim,
             Font = Enum.Font.GothamBold,
             TextSize = 12,
@@ -1635,7 +1750,6 @@ function Zelo:CreateWindow(cfg)
         corner(8, BtnClose)
         stroke(C.Border, 1, BtnClose)
 
-        -- Verificar key salva
         local savedKey = nil
         if SaveKey then
             pcall(function()
@@ -1652,7 +1766,7 @@ function Zelo:CreateWindow(cfg)
             KeyGui:Destroy()
             WIN.Visible = true
             Zelo:Notify({
-                Title = "Key System",
+                Title = KeyTitle,
                 Text = "Key carregada automaticamente!",
                 Duration = 3,
                 Type = "success"
@@ -1681,9 +1795,9 @@ function Zelo:CreateWindow(cfg)
                 KeyInput.Text = ""
                 KeyInput.PlaceholderText = "Key incorreta!"
                 KeyInput.PlaceholderColor3 = C.Red
-                tween(KeyCard, 0.05, {Position = UDim2.new(0.5, -198, 0.5, -120)})
+                tween(KeyCard, 0.05, {Position = UDim2.new(0.5, -198, 0.5, -cardHeight/2)})
                 task.delay(0.05, function()
-                    tween(KeyCard, 0.05, {Position = UDim2.new(0.5, -200, 0.5, -120)})
+                    tween(KeyCard, 0.05, {Position = UDim2.new(0.5, -200, 0.5, -cardHeight/2)})
                 end)
                 Zelo:Notify({
                     Title = "Erro",
@@ -1698,7 +1812,7 @@ function Zelo:CreateWindow(cfg)
             BtnGetKey.MouseButton1Click:Connect(function()
                 pcall(function() setclipboard(GetKeyLink) end)
                 BtnGetKey.Text = "Copiado!"
-                task.delay(1.5, function() BtnGetKey.Text = "Get Key" end)
+                task.delay(1.5, function() BtnGetKey.Text = KeyGetText end)
             end)
         end
 
@@ -1801,12 +1915,11 @@ function Zelo:CreateWindow(cfg)
         end)
     end
 
-    -- Se nao tem key nem discord, mostra direto
     if not KeySystem and not Discord then
         WIN.Visible = true
     end
 
-    print("[Zelo] Library v2.1.0 carregada | " .. NAME)
+    print("[Zelo] Library v2.2.0 carregada | " .. NAME)
     return WindowObj
 end
 
