@@ -1,6 +1,12 @@
 --[[
-    Zelo Library v2.3.0
+    Zelo Library v2.3.1
     UI Library para Roblox
+
+    FIXES v2.3.1:
+    - [FIX] Dropdown agora tem altura máxima + ScrollingFrame interno
+      (não fica cortado, dá pra descer pela lista quando tem muitas opções)
+    - [FIX] Scrollbar dos groupboxes: leftContainer sem barra visível,
+      rightContainer com barra só na borda direita (sem barra dupla no meio)
 
     FIXES/NOVIDADES v2.3.0:
     - Blur NÃO muda ao minimizar/expandir (só muda ao fechar/unload)
@@ -10,8 +16,6 @@
     - Bug corrigido: fechar com X e reabrir com ToggleKey funciona corretamente
     - Botão Unload nas settings
     - Settings é padrão em todos os scripts da library
-
-    FIX EXTRA:
     - Containers das tabs agora são ScrollingFrame: elementos não atravessam a UI
 ]]
 
@@ -47,7 +51,6 @@ local C = {
     NotifyWarning = Color3.fromRGB(255, 152, 0),
 }
 
--- Detecta se é mobile
 local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 local function make(class, props, parent)
@@ -100,7 +103,6 @@ local function tween(obj, t, props)
     TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
 end
 
--- Helper: conecta tanto mouse quanto touch num frame/button
 local function onActivated(obj, fn)
     if obj:IsA("GuiButton") then
         obj.MouseButton1Click:Connect(fn)
@@ -115,7 +117,6 @@ local function onActivated(obj, fn)
     end
 end
 
--- NOTIFICATION
 local NotifyGui = nil
 local function getNotifyGui()
     if NotifyGui then return NotifyGui end
@@ -301,7 +302,7 @@ function Zelo:CreateWindow(cfg)
         BackgroundColor3 = C.BG,
         BackgroundTransparency = WIN_ALPHA,
         Active = true,
-        ClipsDescendants = true,   -- FIX: impede elementos de vazarem pela janela
+        ClipsDescendants = true,
         Visible = false,
     }, MAIN_GUI)
     corner(12, WIN)
@@ -414,7 +415,6 @@ function Zelo:CreateWindow(cfg)
         tween(CloseBtn, 0.15, {BackgroundColor3 = C.Surface2, TextColor3 = C.Dim})
     end)
 
-    -- Drag (mouse + touch)
     local dragging = false
     local dragStart, startPos
 
@@ -457,7 +457,7 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, 0, 1, -46),
         Position = UDim2.new(0, 0, 0, 46),
         BackgroundTransparency = 1,
-        ClipsDescendants = true,   -- FIX: impede conteúdo de vazar abaixo do header
+        ClipsDescendants = true,
     }, WIN)
 
     local Sidebar = make("Frame", {
@@ -508,12 +508,10 @@ function Zelo:CreateWindow(cfg)
         Size = UDim2.new(1, -160, 1, 0),
         Position = UDim2.new(0, 160, 0, 0),
         BackgroundTransparency = 1,
-        ClipsDescendants = true,   -- FIX: clip na área de conteúdo
+        ClipsDescendants = true,
     }, Body)
 
-    -- ==============================================================
-    -- SETTINGS PANEL (lateral, mesmo estilo de aba)
-    -- ==============================================================
+    -- SETTINGS PANEL
     local SettingsFrame = make("Frame", {
         Name = "SettingsFrame",
         Size = UDim2.new(1, -160, 1, 0),
@@ -578,11 +576,9 @@ function Zelo:CreateWindow(cfg)
         return inner
     end
 
-    -- Section: HUB
     local secHub = makeSettingsSection("Hub")
     local loCount = 1
 
-    -- Toggle "No Name"
     local noNameVal = false
     local noNameRow = make("Frame", {
         Size = UDim2.new(1, 0, 0, 32),
@@ -632,7 +628,6 @@ function Zelo:CreateWindow(cfg)
         setNoName(not noNameVal)
     end)
 
-    -- Keybind para esconder
     local kbRow = make("Frame", {
         Size = UDim2.new(1, 0, 0, 32),
         BackgroundTransparency = 1,
@@ -687,7 +682,6 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- Transparência
     local alphaSection = makeSettingsSection("Transparencia")
     local alphaRow = make("Frame", {
         Size = UDim2.new(1, 0, 0, 40),
@@ -760,7 +754,6 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- Blur (apenas se habilitado)
     if BlurEnabled then
         local blurSection = makeSettingsSection("Blur do Fundo")
         local blurRow = make("Frame", {
@@ -821,7 +814,6 @@ function Zelo:CreateWindow(cfg)
         end)
     end
 
-    -- Discord nas settings (se tiver)
     if Discord then
         local dcSection = makeSettingsSection("Discord")
         local dcRow = make("Frame", {
@@ -848,7 +840,6 @@ function Zelo:CreateWindow(cfg)
         end)
     end
 
-    -- Unload
     local unloadSection = makeSettingsSection("Unload")
     local unloadRow = make("Frame", {
         Size = UDim2.new(1, 0, 0, 32),
@@ -875,9 +866,6 @@ function Zelo:CreateWindow(cfg)
         end)
     end)
 
-    -- ==============================================================
-    -- MINIMIZE / TOGGLE / CLOSE
-    -- ==============================================================
     local bodyMinimized = false
 
     local function showWindow()
@@ -950,9 +938,6 @@ function Zelo:CreateWindow(cfg)
         end
     end)
 
-    -- ==============================================================
-    -- SETTINGS TAB TOGGLE
-    -- ==============================================================
     local function openSettings()
         SETTINGS_ACTIVE = true
         if ACTIVE_TAB then
@@ -997,9 +982,6 @@ function Zelo:CreateWindow(cfg)
         if SETTINGS_ACTIVE then closeSettings() else openSettings() end
     end)
 
-    -- ==============================================================
-    -- WINDOW OBJECT
-    -- ==============================================================
     WindowObj = {}
 
     local function selectTab(tabObj)
@@ -1037,7 +1019,7 @@ function Zelo:CreateWindow(cfg)
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             Visible = false,
-            ClipsDescendants = true,   -- FIX: clip no frame da tab
+            ClipsDescendants = true,
         }, ContentArea)
 
         local secSearch = make("TextBox", {
@@ -1058,14 +1040,14 @@ function Zelo:CreateWindow(cfg)
         stroke(C.Border, 1, secSearch)
         pad(0, 0, 8, 8, secSearch)
 
-        -- FIX PRINCIPAL: ScrollingFrame em vez de Frame para os containers
+        -- FIX BUG 2: leftContainer sem ScrollBarThickness — não mostra barra
+        -- no meio da UI (entre as duas colunas). Scroll via wheel/touch continua funcionando.
         local leftContainer = make("ScrollingFrame", {
             Name = "LeftContainer",
             Size = UDim2.new(0.5, -10, 1, -48),
             Position = UDim2.new(0, 14, 0, 44),
             BackgroundTransparency = 1,
-            ScrollBarThickness = 3,
-            ScrollBarImageColor3 = C.Border2,
+            ScrollBarThickness = 0,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             ElasticBehavior = Enum.ElasticBehavior.Never,
@@ -1074,6 +1056,7 @@ function Zelo:CreateWindow(cfg)
         listLayout(Enum.FillDirection.Vertical, 10, leftContainer)
         pad(0, 8, 0, 4, leftContainer)
 
+        -- rightContainer mantém a barra só na borda direita (exterior da janela)
         local rightContainer = make("ScrollingFrame", {
             Name = "RightContainer",
             Size = UDim2.new(0.5, -10, 1, -48),
@@ -1457,10 +1440,18 @@ function Zelo:CreateWindow(cfg)
                 return ctrl
             end
 
+            -- ==============================================================
+            -- FIX BUG 1: Dropdown com altura máxima + ScrollingFrame interno
+            -- Antes: dropFrame era Frame simples sem scroll → itens ficavam
+            --        cortados pelo ClipsDescendants da janela sem como rolar.
+            -- Agora: dropWrapper limita a altura, dropScroll dentro permite rolar.
+            -- ==============================================================
             function SectionObj:AddDropdown(opts)
                 opts = opts or {}
                 local options = opts.Options or {}
                 local selected = opts.Default or (options[1] or "")
+                local DROP_MAX_H = 160  -- altura máxima visível da lista
+
                 local row = makeRow(34)
                 row.ClipsDescendants = false
 
@@ -1507,23 +1498,35 @@ function Zelo:CreateWindow(cfg)
                     TextSize = 10,
                 }, dropBtn)
 
-                -- Dropdown flutua no WIN (fora dos ScrollingFrames) para não ser cortado
-                local dropFrame = make("Frame", {
+                -- wrapper com altura limitada (clips o scroll interno)
+                local dropWrapper = make("Frame", {
                     Size = UDim2.new(0, 100, 0, 0),
                     BackgroundColor3 = C.Surface3,
                     Visible = false,
                     ZIndex = 200,
-                    AutomaticSize = Enum.AutomaticSize.Y,
+                    ClipsDescendants = true,
                 }, WIN)
-                corner(6, dropFrame)
-                stroke(C.Border, 1, dropFrame)
-                listLayout(Enum.FillDirection.Vertical, 1, dropFrame)
-                pad(2, 2, 2, 2, dropFrame)
+                corner(6, dropWrapper)
+                stroke(C.Border, 1, dropWrapper)
+
+                -- scrolling frame que contém os botões de opção
+                local dropScroll = make("ScrollingFrame", {
+                    Size = UDim2.new(1, 0, 1, 0),
+                    BackgroundTransparency = 1,
+                    ScrollBarThickness = 3,
+                    ScrollBarImageColor3 = C.Border2,
+                    CanvasSize = UDim2.new(0, 0, 0, 0),
+                    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                    ElasticBehavior = Enum.ElasticBehavior.Never,
+                    ZIndex = 201,
+                }, dropWrapper)
+                listLayout(Enum.FillDirection.Vertical, 1, dropScroll)
+                pad(2, 2, 2, 2, dropScroll)
 
                 local open = false
 
                 local function refreshOptions()
-                    for _, child in pairs(dropFrame:GetChildren()) do
+                    for _, child in pairs(dropScroll:GetChildren()) do
                         if child:IsA("TextButton") then child:Destroy() end
                     end
                     for _, opt in pairs(options) do
@@ -1535,8 +1538,8 @@ function Zelo:CreateWindow(cfg)
                             Font = Enum.Font.Gotham,
                             TextSize = 10,
                             AutoButtonColor = false,
-                            ZIndex = 201,
-                        }, dropFrame)
+                            ZIndex = 202,
+                        }, dropScroll)
                         corner(4, optBtn)
 
                         optBtn.MouseEnter:Connect(function()
@@ -1553,7 +1556,7 @@ function Zelo:CreateWindow(cfg)
                             selected = opt
                             dropBtn.Text = selected
                             open = false
-                            dropFrame.Visible = false
+                            dropWrapper.Visible = false
                             dropArrow.Text = "v"
                             if opts.Callback then opts.Callback(selected) end
                         end)
@@ -1565,10 +1568,26 @@ function Zelo:CreateWindow(cfg)
                     local winPos = WIN.AbsolutePosition
                     local btnPos = dropBtn.AbsolutePosition
                     local btnSize = dropBtn.AbsoluteSize
+
+                    -- conta itens para calcular altura real
+                    local itemCount = 0
+                    for _, child in pairs(dropScroll:GetChildren()) do
+                        if child:IsA("TextButton") then itemCount += 1 end
+                    end
+                    local totalH = itemCount * 27 + 4  -- 26px por item + 1px gap + padding
+                    local wrapH = math.min(totalH, DROP_MAX_H)
+
                     local relX = btnPos.X - winPos.X
                     local relY = btnPos.Y - winPos.Y + btnSize.Y + 4
-                    dropFrame.Position = UDim2.new(0, relX, 0, relY)
-                    dropFrame.Size = UDim2.new(0, btnSize.X, 0, 0)
+
+                    -- evita sair pela borda inferior da janela
+                    local winH = WIN.AbsoluteSize.Y
+                    if relY + wrapH > winH - 8 then
+                        relY = btnPos.Y - winPos.Y - wrapH - 4
+                    end
+
+                    dropWrapper.Position = UDim2.new(0, relX, 0, relY)
+                    dropWrapper.Size = UDim2.new(0, btnSize.X, 0, wrapH)
                 end
 
                 onActivated(dropBtn, function()
@@ -1577,9 +1596,9 @@ function Zelo:CreateWindow(cfg)
                     if open then
                         refreshOptions()
                         repositionDrop()
-                        dropFrame.Visible = true
+                        dropWrapper.Visible = true
                     else
-                        dropFrame.Visible = false
+                        dropWrapper.Visible = false
                     end
                 end)
 
@@ -1728,7 +1747,6 @@ function Zelo:CreateWindow(cfg)
 
                 local pickerOpen = false
 
-                -- Picker também flutua no WIN para não ser cortado pelo ScrollingFrame
                 local pickerFrame = make("Frame", {
                     Size = UDim2.new(0, 180, 0, 120),
                     BackgroundColor3 = C.Surface,
@@ -1775,7 +1793,6 @@ function Zelo:CreateWindow(cfg)
                 corner(4, bInput)
 
                 local labels = {"R", "G", "B"}
-                local inputs = {rInput, gInput, bInput}
                 local xOffsets = {0, 0.35, 0.7}
                 for i, lbl in ipairs(labels) do
                     make("TextLabel", {
@@ -1850,9 +1867,7 @@ function Zelo:CreateWindow(cfg)
         return TabObj
     end
 
-    -- ==============================================================
     -- KEY SYSTEM
-    -- ==============================================================
     if KeySystem then
         local KeyGui = make("ScreenGui", {
             Name = "ZeloKey",
@@ -2074,9 +2089,7 @@ function Zelo:CreateWindow(cfg)
         end)
     end
 
-    -- ==============================================================
     -- DISCORD (sem key system)
-    -- ==============================================================
     if Discord and not KeySystem then
         local DiscordGui = make("ScreenGui", {
             Name = "ZeloDiscord",
@@ -2176,7 +2189,7 @@ function Zelo:CreateWindow(cfg)
         setBlur(true)
     end
 
-    print("[Zelo] Library v2.3.0 carregada | " .. NAME)
+    print("[Zelo] Library v2.3.1 carregada | " .. NAME)
     return WindowObj
 end
 
