@@ -1040,27 +1040,13 @@ function Zelo:CreateWindow(cfg)
         stroke(C.Border, 1, secSearch)
         pad(0, 0, 8, 8, secSearch)
 
-        -- FIX BUG 2: leftContainer sem ScrollBarThickness — não mostra barra
-        -- no meio da UI (entre as duas colunas). Scroll via wheel/touch continua funcionando.
-        local leftContainer = make("ScrollingFrame", {
-            Name = "LeftContainer",
-            Size = UDim2.new(0.5, -10, 1, -48),
+        -- FIX BUG 2: um único ScrollingFrame pai que ocupa toda a área de conteúdo.
+        -- Dentro dele ficam dois Frames normais (sem scroll próprio), lado a lado.
+        -- Assim a scrollbar aparece UMA SÓ VEZ, na borda direita da janela.
+        local columnsScroll = make("ScrollingFrame", {
+            Name = "ColumnsScroll",
+            Size = UDim2.new(1, -14, 1, -48),
             Position = UDim2.new(0, 14, 0, 44),
-            BackgroundTransparency = 1,
-            ScrollBarThickness = 0,
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            AutomaticCanvasSize = Enum.AutomaticSize.Y,
-            ElasticBehavior = Enum.ElasticBehavior.Never,
-            ClipsDescendants = true,
-        }, tabFrame)
-        listLayout(Enum.FillDirection.Vertical, 10, leftContainer)
-        pad(0, 8, 0, 4, leftContainer)
-
-        -- rightContainer mantém a barra só na borda direita (exterior da janela)
-        local rightContainer = make("ScrollingFrame", {
-            Name = "RightContainer",
-            Size = UDim2.new(0.5, -10, 1, -48),
-            Position = UDim2.new(0.5, 4, 0, 44),
             BackgroundTransparency = 1,
             ScrollBarThickness = 3,
             ScrollBarImageColor3 = C.Border2,
@@ -1069,6 +1055,34 @@ function Zelo:CreateWindow(cfg)
             ElasticBehavior = Enum.ElasticBehavior.Never,
             ClipsDescendants = true,
         }, tabFrame)
+
+        -- frame interno que agrupa as duas colunas lado a lado
+        local columnsRow = make("Frame", {
+            Name = "ColumnsRow",
+            Size = UDim2.new(1, 0, 0, 0),
+            BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.Y,
+        }, columnsScroll)
+
+        local leftContainer = make("Frame", {
+            Name = "LeftContainer",
+            Size = UDim2.new(0.5, -5, 0, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.Y,
+            ClipsDescendants = false,
+        }, columnsRow)
+        listLayout(Enum.FillDirection.Vertical, 10, leftContainer)
+        pad(0, 8, 0, 4, leftContainer)
+
+        local rightContainer = make("Frame", {
+            Name = "RightContainer",
+            Size = UDim2.new(0.5, -5, 0, 0),
+            Position = UDim2.new(0.5, 5, 0, 0),
+            BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.Y,
+            ClipsDescendants = false,
+        }, columnsRow)
         listLayout(Enum.FillDirection.Vertical, 10, rightContainer)
         pad(0, 8, 4, 0, rightContainer)
 
@@ -1094,6 +1108,7 @@ function Zelo:CreateWindow(cfg)
             SectionSearch = secSearch,
             LeftContainer = leftContainer,
             RightContainer = rightContainer,
+            ColumnsScroll = columnsScroll,
         }
         table.insert(TABS, tabObj)
 
